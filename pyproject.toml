@@ -1,0 +1,5 @@
+[project]
+name = "atreus"
+version = "0.1.0"
+description = "Adaptive Personal Intelligence Platform"
+requires-python = ">=3.13"
