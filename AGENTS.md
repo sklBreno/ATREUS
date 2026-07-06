@@ -1,6 +1,8 @@
 # ATREUS Development Guide
 
-Version: 1.0
+**Status:** Approved  
+**Version:** 1.1  
+**Last Updated:** 2026-07-06
 
 ---
 
@@ -16,7 +18,7 @@ The objective is to build a long-term intelligent platform capable of understand
 
 # Architecture Philosophy
 
-ATREUS follows:
+ATREUS follows the following architectural principles:
 
 - Modular Architecture
 - SOLID Principles
@@ -27,17 +29,43 @@ ATREUS follows:
 
 Every architectural decision must preserve these principles.
 
+Architecture documentation is considered the source of truth.
+
 ---
 
 # Documentation
 
-Before implementing any module, always consult:
+Every implementation must be based on the project documentation.
 
-docs/architecture/
+Never implement functionality that contradicts documented behavior.
 
-Architecture documents define the expected behavior of each component.
+Documentation always takes precedence over assumptions.
 
-Never implement functionality that contradicts the documentation.
+---
+
+# Required Reading
+
+Before implementing any code, read the following documents in order:
+
+1. README.md
+2. docs/manifesto.md
+3. docs/project-vision.md
+4. docs/architecture/overview.md
+5. docs/development-standards.md
+6. docs/guides/module-development-standard.md
+7. docs/guides/interface-standard.md
+8. docs/guides/ai-development-workflow.md
+
+After reading the core documentation, read the architecture document related to the requested task.
+
+Examples:
+
+- docs/architecture/configuration.md
+- docs/architecture/memory.md
+- docs/architecture/planner.md
+- docs/architecture/core.md
+- docs/architecture/event-bus.md
+- docs/architecture/context-engine.md
 
 ---
 
@@ -48,14 +76,17 @@ Every source file must follow:
 - Python 3.13+
 - Full type hints
 - Google-style docstrings
+- Explicit naming
 - Small functions
 - Small classes
-- Explicit naming
-- No unnecessary complexity
+- Single Responsibility Principle
+- Readable code over clever code
 
-Avoid clever solutions.
+Avoid unnecessary complexity.
 
-Prefer readable code.
+Prefer composition over inheritance whenever appropriate.
+
+Use the Python standard library whenever possible.
 
 ---
 
@@ -69,9 +100,11 @@ This includes:
 - Documentation
 - Comments
 - Commit messages
+- Branch names
 - Class names
+- Function names
 - Variables
-- Methods
+- Exceptions
 
 Conversations with the project owner may occur in Portuguese.
 
@@ -79,14 +112,17 @@ Conversations with the project owner may occur in Portuguese.
 
 # Module Responsibilities
 
-Every module must have one clear responsibility.
+Each module must have a single, clearly defined responsibility.
 
 Business logic must never be mixed with:
 
 - Configuration
 - Logging
-- Infrastructure
 - Persistence
+- Infrastructure
+- External services
+
+Modules should remain highly cohesive and loosely coupled.
 
 ---
 
@@ -98,25 +134,29 @@ Interfaces define contracts.
 
 Implementations define behavior.
 
+Respect the Dependency Inversion Principle.
+
 ---
 
 # Error Handling
 
-Raise meaningful exceptions.
+Raise meaningful and explicit exceptions.
 
-Avoid silent failures.
+Avoid generic exceptions whenever possible.
 
-Avoid generic exceptions.
+Never silently ignore errors.
+
+Every failure should provide enough information for troubleshooting.
 
 ---
 
 # Logging
 
-Never use print() for application logging.
+Never use `print()` for application logging.
 
 Use the project's logging infrastructure.
 
-print() is acceptable only for temporary debugging during development.
+Temporary debugging using `print()` is acceptable only during local development.
 
 ---
 
@@ -124,19 +164,45 @@ print() is acceptable only for temporary debugging during development.
 
 Every implementation should be designed to be testable.
 
-Prefer dependency injection over hardcoded dependencies.
+Prefer dependency injection.
+
+Avoid hidden dependencies.
+
+Implementations should support isolated unit testing.
+
+---
+
+# Git Workflow
+
+Development follows a feature branch workflow.
+
+Rules:
+
+- Never commit directly to the main branch.
+- Create one feature branch per task.
+- Keep commits small and focused.
+- Write descriptive commit messages.
+- Submit changes for review before merging.
+
+Examples:
+
+```
+feature/configuration-manager
+feature/event-bus
+feature/memory-store
+```
 
 ---
 
 # Future Evolution
 
-Code should be written with extensibility in mind.
+Design for extensibility.
 
-However, avoid implementing features that are not currently required.
+Do not implement features that are not currently required.
 
-Follow the documented architecture.
+Avoid premature optimization.
 
-Do not anticipate future requirements with unnecessary complexity.
+Keep implementations simple and maintainable.
 
 ---
 
@@ -144,13 +210,34 @@ Do not anticipate future requirements with unnecessary complexity.
 
 When implementing code:
 
-- Read the architecture documentation first.
-- Never invent new architecture.
+- Read AGENTS.md first.
+- Read all required documentation before writing code.
+- Read the architecture document for the requested module.
+- Never invent architecture.
 - Never rename documented modules.
+- Never modify unrelated files.
 - Never introduce unnecessary dependencies.
 - Keep implementations simple.
-- Respect the project structure.
+- Respect the documented project structure.
 - Follow Python best practices.
-- Preserve consistency across the project.
+- Preserve consistency across the entire project.
+- Implement only the requested functionality.
+- Ask for clarification if documentation is ambiguous.
 
 If documentation and implementation conflict, documentation always takes precedence.
+
+---
+
+# Final Principle
+
+ATREUS is designed as a long-term software platform.
+
+Prioritize:
+
+1. Readability
+2. Maintainability
+3. Consistency
+4. Testability
+5. Extensibility
+
+Short-term convenience must never compromise the long-term architecture of the project.

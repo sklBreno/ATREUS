@@ -2,13 +2,13 @@
 
 **Layer:** Infrastructure
 
-**Status:** Draft
+**Status:** Approved
 
-**Version:** 1.0
+**Version:** 1.1
 
 **Owner:** ATREUS Core Team
 
-**Last Updated:** 2026-07-04
+**Last Updated:** 2026-07-06
 
 ---
 
@@ -26,10 +26,11 @@ The Configuration Manager is one of the first components initialized during the 
 
 The Configuration Manager is responsible for:
 
-- Loading configuration during platform startup.
+- Loading configuration during platform bootstrap.
 - Providing centralized access to configuration values.
 - Applying default values when no user configuration exists.
-- Validating configuration before exposing it to the system.
+- Loading configuration from supported sources.
+- Validating configuration before exposing it to the platform.
 - Maintaining configuration consistency throughout application execution.
 - Supporting multiple configuration sources.
 - Allowing future expansion without affecting dependent modules.
@@ -47,6 +48,7 @@ The Configuration Manager is **not** responsible for:
 - Capability execution.
 - AI integration.
 - Operating system interaction.
+- Persisting user data.
 
 Its sole responsibility is managing application configuration.
 
@@ -54,7 +56,7 @@ Its sole responsibility is managing application configuration.
 
 # Architecture
 
-The Configuration Manager acts as a centralized service shared across the entire platform.
+The Configuration Manager acts as the centralized configuration service shared across the entire platform.
 
 ```text
                   Configuration Sources
@@ -78,25 +80,53 @@ All configuration requests must go through the Configuration Manager.
 
 ---
 
+# Internal Architecture
+
+Version 1 is expected to follow the architecture below.
+
+```text
+                 Bootstrap
+                     │
+                     ▼
+          ConfigurationLoader
+                     │
+                     ▼
+       ConfigurationValidator
+                     │
+                     ▼
+         ConfigurationManager
+                     │
+                     ▼
+             Configuration
+                     │
+     ┌─────────┬─────────┬─────────┬─────────┐
+     ▼         ▼         ▼         ▼
+    Core    Planner   Memory   Logger
+```
+
+Each component has a single responsibility.
+
+---
+
 # Initialization Flow
 
-During platform startup, the following sequence occurs:
+During platform bootstrap, the following sequence occurs:
 
 1. Bootstrap starts.
-2. Configuration Manager is created.
-3. Default configuration is loaded.
-4. External configuration sources are loaded.
-5. Configuration values are validated.
-6. A Configuration object becomes available.
-7. The remaining platform components continue initialization.
+2. Configuration Loader loads default values.
+3. Environment variables are loaded.
+4. Configuration Validator validates all values.
+5. Configuration Manager creates a Configuration object.
+6. The Configuration object becomes available.
+7. Remaining platform components continue initialization.
 
 ---
 
 # Configuration Sources
 
-Version 1 of ATREUS supports:
+Version 1 supports:
 
-- Default configuration values.
+- Built-in default values.
 - Environment variables (`.env`).
 
 Future versions may additionally support:
@@ -112,19 +142,33 @@ Future versions may additionally support:
 
 # Configuration Priority
 
-When multiple sources provide the same configuration value, the following priority order applies:
+When multiple sources define the same configuration value, the following priority applies:
 
 1. User-defined configuration.
 2. Environment variables (`.env`).
 3. Default platform values.
 
-This priority ensures predictable and consistent behavior.
+This guarantees deterministic behavior across the platform.
+
+---
+
+# Configuration Object
+
+The Configuration Manager provides a single immutable Configuration object.
+
+The Configuration object contains only validated configuration values.
+
+It does not contain loading logic, validation logic, or persistence logic.
+
+Its sole responsibility is representing the current platform configuration.
+
+Every module should consume this object rather than interacting directly with configuration sources.
 
 ---
 
 # Public Interface
 
-Other modules should never read configuration files directly.
+Other modules must never read configuration files directly.
 
 Instead, configuration is accessed through the Configuration Manager.
 
@@ -142,17 +186,76 @@ The public interface should remain stable regardless of how configuration is sto
 
 ---
 
+# Mutability
+
+Configuration values are immutable during normal platform execution.
+
+Runtime configuration changes are not supported in Version 1.
+
+Future versions may introduce controlled runtime updates through dedicated APIs.
+
+---
+
+# Planned Implementation
+
+Version 1 is expected to be implemented using the following components:
+
+- Configuration
+- ConfigurationManager
+- ConfigurationLoader
+- ConfigurationValidator
+- ConfigurationException
+
+Each component should have one clearly defined responsibility.
+
+---
+
+# Thread Safety
+
+Version 1 assumes a single-process application.
+
+The Configuration Manager must support concurrent read operations.
+
+Runtime write operations are not supported.
+
+---
+
 # Design Principles
 
 The Configuration Manager follows these architectural principles:
 
-- Single Source of Truth.
-- Low Coupling.
-- High Cohesion.
-- Simplicity.
-- Extensibility.
-- Predictability.
-- Separation of Concerns.
+- Single Source of Truth
+- Single Responsibility Principle
+- Separation of Concerns
+- Low Coupling
+- High Cohesion
+- Simplicity
+- Predictability
+- Extensibility
+
+---
+
+# Dependencies
+
+The Configuration Manager has no dependencies on other ATREUS modules.
+
+It is initialized before nearly every other platform component.
+
+This guarantees that configuration is always available when required.
+
+---
+
+# Testing Requirements
+
+The module must be tested to ensure:
+
+- Correct loading of default values.
+- Correct loading of environment variables.
+- Proper validation of invalid values.
+- Correct priority resolution between configuration sources.
+- Consistent configuration availability across the platform.
+- Stable behavior during long-running execution.
+- Immutable Configuration objects after initialization.
 
 ---
 
@@ -169,26 +272,7 @@ Future capabilities may include:
 - Runtime configuration updates.
 - Cloud synchronization.
 
----
-
-# Dependencies
-
-The Configuration Manager has no dependencies on other ATREUS modules.
-
-It is initialized before nearly every other platform component.
-
----
-
-# Testing Requirements
-
-The module must be tested to ensure:
-
-- Correct loading of default values.
-- Correct loading of environment variables.
-- Proper validation of invalid values.
-- Correct priority resolution between configuration sources.
-- Consistent configuration availability across the platform.
-- Stable behavior during long-running execution.
+Future enhancements should not require changes to dependent modules.
 
 ---
 
@@ -198,8 +282,8 @@ The Configuration Manager is considered an infrastructure component.
 
 Its purpose is to provide configuration information while remaining completely independent from business logic.
 
-Keeping configuration isolated from the rest of the platform improves maintainability, modularity, scalability, and long-term evolution.
+Configuration loading, validation, and representation are intentionally separated into independent components to maximize maintainability, scalability, and testability.
 
 Future configuration sources should be introduced without requiring modifications to dependent modules.
 
-The Configuration Manager should remain one of the most stable components in the entire architecture.
+The Configuration Manager is expected to remain one of the most stable components in the entire ATREUS architecture.
