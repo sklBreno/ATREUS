@@ -4,6 +4,8 @@
 
 **Date:** 2026-07-02
 
+**Last Updated:** 2026-08-31
+
 ---
 
 # Context
@@ -24,11 +26,14 @@ Performance is therefore considered an essential aspect of user experience rathe
 
 ATREUS adopts an Adaptive Performance model.
 
-The platform continuously evaluates both system load and user context in order to determine the appropriate operating mode.
+Decision Engine evaluates system signals, current context, validated
+configuration, and user policy to determine the desired performance profile.
 
 Instead of maintaining a fixed performance profile, the platform dynamically adjusts its behavior according to current conditions.
 
-Performance adaptation is automatic but always configurable by the user.
+Core records and propagates the selected profile. Each module adapts its own
+permitted activity to the active profile. Performance adaptation is automatic
+but always configurable by the user.
 
 ---
 
@@ -36,9 +41,12 @@ Performance adaptation is automatic but always configurable by the user.
 
 ATREUS operates using three performance profiles.
 
-## Performance Mode
+Performance profiles are separate from the `ACTIVE`, `PASSIVE`, and `STANDBY`
+operational states owned by Core.
 
-Activated when the system detects demanding workloads.
+## `PERFORMANCE`
+
+Selected when approved context and system signals indicate demanding workloads.
 
 Examples include:
 
@@ -59,9 +67,9 @@ Behavior:
 
 ---
 
-## Balanced Mode
+## `BALANCED`
 
-Default operating mode.
+Configured baseline performance profile.
 
 Behavior:
 
@@ -75,9 +83,13 @@ This profile provides the best balance between responsiveness and resource usage
 
 ---
 
-## Idle Mode
+## `IDLE`
 
-Activated when the user is inactive.
+Selected when context, system signals, configuration, and user policy permit
+eligible deferred activity.
+
+The `IDLE` performance profile is not the same concept as the Context Engine's
+`IDLE` user context.
 
 Behavior:
 
@@ -93,7 +105,8 @@ Background processing should prioritize tasks that are not time-sensitive.
 
 # Adaptive Decision Making
 
-Performance adaptation should consider multiple factors simultaneously.
+Decision Engine should consider multiple factors simultaneously when selecting
+the desired performance profile.
 
 Examples include:
 
@@ -108,7 +121,9 @@ Examples include:
 
 No single metric should determine the active profile.
 
-The platform should evaluate the overall operating environment before making adjustments.
+Decision Engine should evaluate the overall environment before returning a
+profile decision. It does not apply the change; Core records and propagates the
+approved profile.
 
 ---
 
@@ -116,9 +131,10 @@ The platform should evaluate the overall operating environment before making adj
 
 Performance adaptation should occur automatically whenever possible.
 
-The user should not need to manually enable gaming mode or disable background processing.
+The user should not need to select a profile manually or disable background
+processing.
 
-Transitions between profiles should be smooth, predictable, and transparent.
+Changes between profiles should be smooth, predictable, and transparent.
 
 Users may override automatic behavior at any time.
 

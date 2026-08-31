@@ -1,8 +1,10 @@
 # Core
 
-**Status:** Draft  
-**Version:** 1.0  
-**Last Updated:** 2026-07-02
+**Status:** Draft
+
+**Version:** 1.1
+
+**Last Updated:** 2026-08-17
 
 ---
 
@@ -10,27 +12,24 @@
 
 The Core is the central orchestration component of ATREUS.
 
-Its responsibility is to coordinate the platform, route requests, initialize modules, and maintain the application's execution lifecycle.
+It coordinates platform lifecycle, routes classified requests, applies platform
+state transitions, and invokes specialized modules through explicit interfaces.
 
-The Core is not responsible for implementing business logic.
-
-It delegates responsibilities to specialized components.
+The Core owns the flow, never the work.
 
 ---
 
 # Philosophy
 
-The Core should remain small.
+The Core should remain small and stable.
 
-It should understand the platform.
+It understands module contracts and lifecycle order but never absorbs domain
+logic. Classification, context detection, decision policy, planning, memory,
+capability execution, AI processing, and operating-system access remain in
+their specialized components.
 
-It should never become the platform.
-
-Every feature added directly to the Core increases coupling and reduces maintainability.
-
-The Core exists to coordinate.
-
-Nothing more.
+Every feature added directly to the Core increases coupling. New behavior
+should normally enter through an interface, capability, or domain event.
 
 ---
 
@@ -38,196 +37,351 @@ Nothing more.
 
 The Core is responsible for:
 
-- Initializing platform components.
-- Managing the application lifecycle.
-- Coordinating module communication.
-- Routing requests.
-- Maintaining platform state.
-- Publishing system events.
-- Handling graceful startup and shutdown.
-- Monitoring module health.
+- Coordinating deterministic startup and graceful shutdown.
+- Managing the platform lifecycle.
+- Owning the current operational state.
+- Recording and propagating the active performance profile.
+- Routing classified requests according to Decision Engine results.
+- Assembling immutable inputs from module contracts.
+- Coordinating approved plans one step at a time.
+- Publishing Core-owned lifecycle and request events.
+- Reacting to domain events without taking ownership of them.
+- Isolating module failures where recovery is possible.
+- Maintaining correlation across one platform operation.
 
-The Core should never perform AI processing, memory management, context detection, or skill execution directly.
+---
+
+# Non-Responsibilities
+
+The Core is not responsible for:
+
+- Classifying requests.
+- Detecting or determining user context.
+- Making domain or request decisions.
+- Creating plans.
+- Loading or executing capability implementations.
+- Cataloging capability metadata.
+- Storing memory entries directly.
+- Calling native operating-system APIs.
+- Performing AI processing.
+- Reading environment variables or configuration files.
+- Granting permissions interactively.
+
+---
+
+# Platform State
+
+Core exposes an immutable `PlatformStateSnapshot` containing at least:
+
+- Current lifecycle phase.
+- Current operational state.
+- Active performance profile.
+- Startup timestamp.
+- Latest state-change timestamp.
+
+Consumers receive snapshots and must not mutate Core state directly.
+
+---
+
+# Operational State
+
+Version 1 defines:
+
+- `ACTIVE`.
+- `PASSIVE`.
+- `STANDBY`.
+
+Core owns and applies operational-state transitions because they affect
+platform lifecycle and module orchestration.
+
+Core does not determine a transition alone. The transition flow is:
+
+```text
+System Layer Signals + ContextSnapshot + Configuration + Current Platform State
+                                  │
+                                  ▼
+                           Decision Engine
+                                  │ desired state
+                                  ▼
+                                Core
+                                  │
+                 validate transition and apply lifecycle behavior
+                                  │
+                                  ▼
+                    OperationalStateChanged
+```
+
+Context Engine supplies context but never changes operational state. System
+Layer supplies observations but never chooses lifecycle behavior.
+
+Core rejects invalid transitions explicitly and preserves the previous valid
+state.
+
+---
+
+# Performance Profiles
+
+Version 1 defines performance profiles separately from operational state:
+
+- `PERFORMANCE`.
+- `BALANCED`.
+- `IDLE`.
+
+Decision Engine determines the desired profile from current context, validated
+configuration, user policy, and System Layer signals.
+
+Core records and propagates the selected profile through the platform-state
+contract and `PerformanceProfileChanged`. Modules remain responsible for
+adapting their own permitted activity to the active profile.
+
+Core does not implement module-specific performance tuning.
 
 ---
 
 # Startup Sequence
 
-During startup the Core performs the following steps.
+Bootstrap loads and validates configuration before constructing Core. Concrete
+components are supplied behind their interfaces through dependency injection.
 
-1. Load configuration.
+Core then coordinates this deterministic Version 1 sequence:
 
+1. Receive validated Configuration and composed module interfaces.
 2. Initialize Event Bus.
+3. Initialize bounded Working Memory.
+4. Initialize System Layer adapters.
+5. Initialize the configured AI Provider abstraction, if available.
+6. Initialize Capability Registry.
+7. Initialize Capability Runtime and load trusted local capabilities.
+8. Seal Capability Registry after dependency validation.
+9. Initialize Context Engine.
+10. Initialize Request Classifier.
+11. Initialize Decision Engine.
+12. Initialize Planner.
+13. Register event subscriptions.
+14. Establish the configured initial operational state and performance profile.
+15. Start approved background observation.
+16. Begin accepting user requests.
 
-3. Initialize Memory.
-
-4. Initialize Context Engine.
-
-5. Initialize Capability Registry.
-
-6. Initialize Skill Manager.
-
-7. Initialize Planner.
-
-8. Initialize AI Providers.
-
-9. Register platform services.
-
-10. Start background monitoring.
-
-11. Begin accepting user requests.
-
-The initialization order should remain deterministic.
+No module reads raw configuration sources during this sequence.
 
 ---
 
 # Request Lifecycle
 
-Every request follows the same lifecycle.
+Every request follows explicit orchestration:
 
 ```text
-User
-
-↓
-
-Request Classifier
-
-↓
-
-Core
-
-↓
-
-Decision Engine
-
-↓
-
-Planner (optional)
-
-↓
-
-Skill Manager / AI Provider
-
-↓
-
-Memory Update
-
-↓
-
-Event Bus
-
-↓
-
-Response
+User Request
+    │
+    ▼
+Core publishes RequestReceived
+    │
+    ▼
+Request Classifier returns ClassifiedRequest
+    │
+    ▼
+Core assembles DecisionInput
+    │
+    ▼
+Decision Engine returns Decision
+    │
+    ├── EXECUTE ───────────────> Capability Runtime
+    ├── REQUEST_PLANNING ──────> Planner
+    │                                │
+    │                                ▼
+    │                           approved Plan
+    │                                │
+    │                                ▼
+    │                    Core invokes each eligible step
+    │                                │
+    │                                ▼
+    │                         Capability Runtime
+    ├── DELEGATE ──────────────> Explicit service interface
+    ├── ASK_FOR_CONFIRMATION ──> User interaction boundary
+    ├── SUGGEST ───────────────> User interaction boundary
+    └── IGNORE ────────────────> No action
+    │
+    ▼
+Core correlates result and publishes RequestCompleted or ErrorOccurred
 ```
 
-The Core coordinates this flow.
+The Core never asks the Request Classifier to select a destination. It never
+passes an entire plan to Capability Runtime because Core owns step progression.
 
-It does not execute the work itself.
+Working Memory is used only when a request requires bounded temporary state.
+
+---
+
+# Plan Coordination
+
+For an approved plan, Core:
+
+1. Verifies that user confirmation requirements are satisfied.
+2. Creates one immutable `CapabilityInvocation` for the next eligible step.
+3. Includes configured permission grants and current context.
+4. Calls Capability Runtime.
+5. Evaluates the immutable execution result.
+6. Continues, stops, or requests user input according to plan dependencies and
+   decision policy.
+
+Core does not modify the plan or execute capability code.
+
+---
+
+# Permissions
+
+Version 1 permission grants are defined by validated user configuration.
+
+Core receives an immutable configured grant set during bootstrap. It supplies
+the relevant grants to `DecisionInput`, `CapabilityInvocation`, and system
+operation context without expanding them.
+
+Capability Registry declares required permissions. Capability Runtime verifies
+grants before execution. System Layer enforces permissions again at the native
+boundary.
+
+Core does not grant permissions interactively and cannot infer a broad grant
+from a narrower configured permission.
+
+---
+
+# AI Provider Initialization
+
+AI credentials enter through approved environment or configuration loading.
+Bootstrap injects them into the selected concrete provider adapter and supplies
+Core only with the `AIProvider` abstraction.
+
+Core must never store, inspect, log, publish, or forward raw credentials.
+AI Provider must not persist them. Credentials are never hardcoded.
+
+The absence of an available provider is a supported platform state. Core keeps
+deterministic capabilities operational and respects `requires_ai` availability
+from capability metadata.
 
 ---
 
 # Module Coordination
 
-The Core communicates with:
+Core communicates through interfaces with:
 
-- Request Classifier
-- Decision Engine
-- Context Engine
-- Planner
-- Memory
-- Skill Manager
-- Capability Registry
-- Event Bus
-- AI Providers
-- System Layer
-- Configuration Manager
+- Configuration Provider.
+- Event Bus.
+- Working Memory Store.
+- System Layer services.
+- AI Provider.
+- Capability Registry and Capability Catalog.
+- Capability Runtime.
+- Context Provider and Context Engine lifecycle contract.
+- Request Classifier.
+- Decision Engine.
+- Planner.
 
-Every dependency should be abstracted through interfaces whenever possible.
+Domain modules do not depend on Core. Core receives implementations through
+composition and depends only on contracts.
 
 ---
 
 # Event Coordination
 
-The Core publishes important platform events.
+Core owns and publishes:
 
-Examples include:
+- `PlatformStarted`.
+- `PlatformStopped`.
+- `ModuleInitialized`.
+- `RequestReceived`.
+- `RequestCompleted`.
+- `OperationalStateChanged`.
+- `PerformanceProfileChanged`.
+- `ErrorOccurred` for orchestration failures.
 
-- PlatformStarted
-- PlatformStopped
-- RequestReceived
-- RequestCompleted
-- ModuleInitialized
-- ContextChanged
-- ErrorOccurred
+Context Engine owns `ContextChanged`. Core subscribes and reacts to that event
+but must not republish it under the same meaning.
 
-Modules should react to events rather than depending directly on one another.
+Other domain modules own their events as defined in their architecture
+documents. Event Bus delivers those facts and never chooses the next lifecycle
+or request step.
 
 ---
 
 # Error Handling
 
-The Core should never crash because a module fails.
+One recoverable module failure should not crash the platform.
 
-Whenever possible:
+Core must:
 
-- isolate failures;
-- restart recoverable modules;
-- report errors through the Event Bus;
-- preserve platform availability.
+- Preserve correlation and identify the failed orchestration step.
+- Isolate failures when the module contract allows recovery.
+- Publish a sanitized `ErrorOccurred`.
+- Keep unaffected modules available.
+- Avoid retrying side-effecting operations without explicit policy.
+- Shut down gracefully when a required foundation component is unavailable.
 
-Platform resilience is considered a primary responsibility of the Core.
+Module-specific exceptions remain owned by their modules. Core translates them
+only into orchestration outcomes and safe user-facing results.
 
 ---
 
 # Performance
 
-The Core should remain lightweight.
+Core remains lightweight and performs no heavy computation.
 
-Heavy computation must always be delegated.
+It coordinates profile changes but does not implement module-specific throttling.
+Modules consume the active profile and apply their documented behavior.
 
-The Core should spend most of its execution time coordinating rather than processing.
+Numeric thresholds for state transitions, performance adaptation, context
+stabilization, planning, Working Memory, and execution deadlines are not defined
+here. Future implementations receive configurable defaults through validated
+configuration.
+
+---
+
+# Testing Requirements
+
+Core tests must cover:
+
+- Deterministic startup and reverse-order shutdown.
+- Request routing for every Decision outcome.
+- Plan-step coordination without direct execution.
+- Operational-state ownership and valid transitions.
+- Performance-profile propagation.
+- `ContextChanged` consumption without duplicate publication.
+- Permission-grant propagation without expansion.
+- AI Provider unavailable behavior.
+- Module failure isolation.
+- Core-owned event publication.
+- Dependency injection through interfaces.
+- Absence of business logic and native system access.
 
 ---
 
 # Scalability
 
-Future platform growth should not require modifications to the Core.
+New modules should integrate through documented interfaces and events without
+absorbing their behavior into Core.
 
-Adding a new module should require:
-
-- registering the module;
-- defining its interfaces;
-- subscribing to the necessary events.
-
-No additional orchestration logic should be necessary.
+Changes to required workflow remain explicit and documented. Event-driven
+communication must not hide control flow merely to avoid updating orchestration.
 
 ---
 
 # Guiding Principles
 
-The Core follows these principles.
-
 - Orchestrate, never execute.
-- Delegate responsibilities.
+- Own flow and lifecycle state.
+- Delegate decisions and work.
+- Depend on abstractions.
+- Preserve explicit event ownership.
 - Minimize coupling.
-- Maximize stability.
-- Keep business logic outside the Core.
-- Remain predictable.
+- Remain predictable and testable.
 - Fail gracefully.
-- Remain easy to understand.
+- Keep user control authoritative.
 
 ---
 
 # Future Evolution
 
-Future versions of the Core may introduce:
+Future versions may introduce approved plugin loading, multi-device
+orchestration, richer health monitoring, or self-diagnostics.
 
-- Distributed execution.
-- Multi-device orchestration.
-- Plugin loading.
-- Dynamic module discovery.
-- Health monitoring.
-- Self-diagnostics.
-
-These improvements should preserve the Core's primary responsibility as the platform orchestrator.
+These changes require documented contracts and must preserve Core as the
+platform orchestrator rather than a business-logic container.

@@ -4,11 +4,11 @@
 
 **Status:** Approved
 
-**Version:** 1.1
+**Version:** 1.2
 
 **Owner:** ATREUS Core Team
 
-**Last Updated:** 2026-07-06
+**Last Updated:** 2026-08-31
 
 ---
 
@@ -19,6 +19,10 @@ The Configuration Manager is responsible for providing a single, reliable source
 Its primary purpose is to centralize configuration loading, validation, and access while keeping the rest of the system independent from configuration storage mechanisms.
 
 The Configuration Manager is one of the first components initialized during the bootstrap process and is expected to be used by nearly every module in the platform.
+
+The public Configuration object contains validated non-secret settings only.
+Secrets use a separate bootstrap boundary and are injected directly into the
+concrete component that requires them.
 
 ---
 
@@ -33,6 +37,8 @@ The Configuration Manager is responsible for:
 - Validating configuration before exposing it to the platform.
 - Maintaining configuration consistency throughout application execution.
 - Supporting multiple configuration sources.
+- Providing validated user permission grants.
+- Providing validated policy objects for bounded runtime behavior.
 - Allowing future expansion without affecting dependent modules.
 
 ---
@@ -49,6 +55,7 @@ The Configuration Manager is **not** responsible for:
 - AI integration.
 - Operating system interaction.
 - Persisting user data.
+- Storing, persisting, logging, or publicly exposing secrets.
 
 Its sole responsibility is managing application configuration.
 
@@ -59,24 +66,37 @@ Its sole responsibility is managing application configuration.
 The Configuration Manager acts as the centralized configuration service shared across the entire platform.
 
 ```text
-                  Configuration Sources
+             Non-Secret Configuration Sources
                           │
         ┌─────────────────┼─────────────────┐
         │                 │                 │
-     Defaults          .env File      Future Sources
+     Defaults         Environment      Future User Sources
         │                 │                 │
         └─────────────────┴─────────────────┘
                           │
                Configuration Manager
                           │
+                    Configuration
+                          │
      ┌──────────┬──────────┼──────────┬──────────┐
      │          │          │          │          │
     Core     Planner    Memory    Logger   Capability Runtime
+
+Approved External Secret Source
+                          │
+                          ▼
+                 Bootstrap Composition
+                          │ dependency injection
+                          ▼
+              Concrete Provider or Adapter
 ```
 
 No module should access configuration files directly.
 
 All configuration requests must go through the Configuration Manager.
+
+Secrets are not configuration requests. Bootstrap obtains them from approved
+external sources and injects them directly into the selected concrete adapter.
 
 ---
 
@@ -114,11 +134,15 @@ During platform bootstrap, the following sequence occurs:
 
 1. Bootstrap starts.
 2. Configuration Loader loads default values.
-3. Environment variables are loaded.
-4. Configuration Validator validates all values.
-5. Configuration Manager creates a Configuration object.
-6. The Configuration object becomes available.
-7. Remaining platform components continue initialization.
+3. Non-secret environment values are loaded.
+4. Configuration Validator validates all non-secret values.
+5. Configuration Manager creates a public Configuration object.
+6. Bootstrap obtains required secrets from approved external sources without
+   adding them to Configuration.
+7. Bootstrap injects each secret directly into the concrete adapter that
+   requires it.
+8. The Configuration object becomes available.
+9. Remaining platform components continue initialization.
 
 ---
 
@@ -127,7 +151,12 @@ During platform bootstrap, the following sequence occurs:
 Version 1 supports:
 
 - Built-in default values.
-- Environment variables (`.env`).
+- Environment variables, optionally supplied through an approved local `.env`
+  source.
+
+Environment variables may also carry secrets, but secret values follow the
+separate secret boundary and are never copied into the public Configuration
+object.
 
 Future versions may additionally support:
 
@@ -142,7 +171,7 @@ Future versions may additionally support:
 
 # Configuration Priority
 
-When multiple sources define the same configuration value, the following priority applies:
+When multiple non-secret sources define the same configuration value, the following priority applies:
 
 1. User-defined configuration.
 2. Environment variables (`.env`).
@@ -150,19 +179,26 @@ When multiple sources define the same configuration value, the following priorit
 
 This guarantees deterministic behavior across the platform.
 
+Secret-source precedence is not part of the public Configuration contract and
+must be defined by the concrete bootstrap integration that owns the secret.
+
 ---
 
 # Configuration Object
 
 The Configuration Manager provides a single immutable Configuration object.
 
-The Configuration object contains only validated configuration values.
+The Configuration object contains only validated, non-secret configuration
+values.
 
 It does not contain loading logic, validation logic, or persistence logic.
 
 Its sole responsibility is representing the current platform configuration.
 
 Every module should consume this object rather than interacting directly with configuration sources.
+
+Public snapshots, representations, diagnostics, events, and logs must never
+contain secrets.
 
 ---
 
@@ -180,9 +216,69 @@ configuration.debug
 configuration.log_level
 configuration.start_with_windows
 configuration.always_on
+configuration.permission_grants
+configuration.context_stabilization_policy
+configuration.working_memory_policy
+configuration.planning_policy
+configuration.execution_policy
 ```
 
 The public interface should remain stable regardless of how configuration is stored internally.
+
+---
+
+# Permission Grants
+
+Version 1 permission grants are user-defined non-secret configuration.
+
+The Configuration object exposes grants as an immutable collection of stable
+permission identifiers. Validation rejects malformed or duplicate identifiers
+and does not infer a broader grant from a narrower one.
+
+Capability Registry declares permissions required by each capability.
+Capability Runtime verifies configured grants before execution, and System
+Layer enforces them again at the operating-system boundary.
+
+Configuration Manager does not grant permissions interactively. Version 1 has
+no interactive permission-grant system.
+
+---
+
+# Configurable Numeric Policies
+
+The Configuration object supplies validated immutable policy objects for:
+
+- Context transition stabilization.
+- Working Memory capacity and expiration behavior.
+- Planning bounds.
+- Capability execution timeout defaults.
+
+This architecture intentionally defines no concrete numeric values. Defaults
+must be owned by future implementation configuration, validated before use, and
+injected into the responsible module. Modules must not hardcode values that
+belong to these policies.
+
+---
+
+# Secrets
+
+Secrets include AI Provider credentials, API keys, tokens, and equivalent
+authentication material.
+
+Version 1 rules are:
+
+- Secrets come only from approved external sources such as environment-backed
+  bootstrap configuration.
+- Bootstrap injects each secret directly into the selected concrete provider or
+  adapter.
+- Secrets never appear in the public Configuration object or its snapshots.
+- Configuration Manager and AI Provider never persist secrets.
+- Secrets never appear in logs, events, errors, requests, responses, or
+  diagnostics.
+- Secrets are never hardcoded.
+
+The public Configuration object may contain a non-secret provider selector or
+feature toggle, but never provider credentials.
 
 ---
 
@@ -253,6 +349,11 @@ The module must be tested to ensure:
 - Correct loading of environment variables.
 - Proper validation of invalid values.
 - Correct priority resolution between configuration sources.
+- Correct loading and validation of permission grants.
+- Correct validation and exposure of numeric policy objects without hardcoded
+  architecture values.
+- Exclusion of secrets from Configuration objects, snapshots, representations,
+  events, errors, and logs.
 - Consistent configuration availability across the platform.
 - Stable behavior during long-running execution.
 - Immutable Configuration objects after initialization.
@@ -268,7 +369,7 @@ Future capabilities may include:
 - Dynamic configuration reload.
 - Multiple configuration profiles.
 - User-specific settings.
-- Encrypted configuration values.
+- Integration with approved external secret providers.
 - Runtime configuration updates.
 - Cloud synchronization.
 

@@ -4,6 +4,8 @@
 
 **Date:** 2026-07-02
 
+**Last Updated:** 2026-08-31
+
 ---
 
 # Context
@@ -34,17 +36,23 @@ Most modules remain idle until triggered by relevant events.
 
 # Operational Model
 
-ATREUS follows three operational states.
+ATREUS follows three operational states: `ACTIVE`, `PASSIVE`, and `STANDBY`.
 
-## Active
+The Core owns the current operational state because it owns platform lifecycle
+and orchestration. Context Engine provides context, System Layer provides system
+signals, and Decision Engine may determine a desired transition. Core validates
+and applies the transition.
+
+## `ACTIVE`
 
 The platform is fully operational.
 
-It monitors contextual information, processes user requests, executes skills, and provides proactive assistance when appropriate.
+It monitors approved contextual information, processes user requests, and
+coordinates approved capabilities through Capability Runtime when appropriate.
 
 ---
 
-## Passive
+## `PASSIVE`
 
 The platform remains available but performs only lightweight monitoring.
 
@@ -54,19 +62,23 @@ This is the default state during normal computer usage.
 
 ---
 
-## Standby
+## `STANDBY`
 
 The platform minimizes its resource consumption.
 
 Only essential background services remain active.
 
-Standby is automatically activated during situations such as:
+A transition to `STANDBY` may be proposed by Decision Engine using context,
+configuration, user policy, and signals such as:
 
 - Gaming
 - High CPU workloads
 - High GPU workloads
 - Battery-saving scenarios
 - User-defined conditions
+
+No single signal applies the transition directly. Core remains responsible for
+validating and applying the selected operational state.
 
 ---
 
@@ -89,15 +101,19 @@ The platform should become operational as quickly as possible without delaying s
 
 ATREUS should avoid continuous polling whenever possible.
 
-Instead, it reacts to events such as:
+Instead, it reacts to approved events such as:
 
 - User requests
 - Context changes
 - System notifications
-- Scheduled tasks
 - File system events
 - Device connections
 - Calendar events
+
+Time-based behavior requires separately approved architecture. A future time
+source may publish an approved event, after which Core can coordinate an
+available capability through explicit interfaces. Version 1 does not define a
+dedicated scheduling module.
 
 This minimizes resource consumption while improving responsiveness.
 
@@ -183,11 +199,13 @@ ATREUS should remain event-driven instead.
 
 ---
 
-## Scheduled Execution
+## Interval-Only Activation
 
 Rejected.
 
-Running only at predefined intervals would delay context detection and reduce responsiveness.
+Running the platform only from predefined time-based triggers would delay
+context detection and reduce responsiveness. Future approved time-based events
+may complement Always-On operation but do not replace it.
 
 ---
 
@@ -209,6 +227,6 @@ Future versions may introduce:
 - Dynamic module loading.
 - Multi-device synchronization.
 - Distributed background processing.
-- Energy-aware scheduling.
+- Energy-aware orchestration policies.
 
 The Always-On Architecture should remain lightweight, configurable, and respectful of the user's computing environment.

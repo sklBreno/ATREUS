@@ -4,236 +4,251 @@
 
 **Date:** 2026-07-02
 
+**Last Updated:** 2026-08-17
+
 ---
 
 # Context
 
-Most digital assistants operate in a reactive manner.
+The same request or platform condition may require different behavior depending
+on what the user is doing.
 
-They wait for explicit user commands before performing any action.
-
-Although effective for simple interactions, this model ignores one of the most valuable sources of information available: context.
-
-The same request may require different behavior depending on what the user is currently doing.
-
-Likewise, there are situations where the system should proactively assist the user without requiring an explicit command.
-
-For ATREUS to become a true personal intelligence platform, contextual awareness must be considered a core architectural capability rather than an optional feature.
+A purely reactive assistant ignores system load, current activity, interruption
+risk, and opportunities for responsible assistance. ATREUS therefore treats
+context as a first-class architectural concept rather than an optional feature.
 
 ---
 
 # Decision
 
-ATREUS adopts a Context-Aware Computing architecture.
+ATREUS adopts Context-Aware Computing.
 
-The platform continuously evaluates the user's computing environment in order to understand the current operational context.
+Context Engine detects and maintains current user context from approved signals.
+Other modules consume its immutable snapshot and must not independently classify
+context.
 
-Context is treated as a first-class architectural concept.
+Version 1 context types are:
 
-Every major decision taken by the platform may consider the current context before execution.
+- `WORKING`.
+- `STUDYING`.
+- `GAMING`.
+- `MEETING`.
+- `ENTERTAINMENT`.
+- `IDLE`.
+- `UNKNOWN`.
 
-Examples of contexts include:
-
-- Working
-- Studying
-- Gaming
-- Meeting
-- Entertainment
-- Idle
-
-The Context Engine is responsible for detecting and maintaining the active context.
-
-Other modules consume contextual information but never determine context themselves.
+`UNKNOWN` represents insufficient reliable context. It is not equivalent to
+`IDLE`.
 
 ---
 
 # Context Engine Responsibilities
 
-The Context Engine is responsible for:
+Context Engine is responsible for:
 
-- Detecting the user's current activity.
-- Monitoring changes in system state.
-- Identifying transitions between contexts.
-- Publishing context change events.
-- Providing the current context to other platform components.
+- Receiving signals from approved System Layer providers.
+- Evaluating signals through deterministic rules.
+- Maintaining the current immutable `ContextSnapshot`.
+- Stabilizing and committing context transitions.
+- Publishing `ContextChanged` after a committed transition.
+- Reporting signal availability.
 
-It does not execute actions.
+Context Engine owns `ContextChanged`.
 
-It only provides situational awareness.
+It does not execute capabilities, change operational state, select performance
+profiles, suppress interactions, pause modules, or apply user-facing behavior.
 
 ---
 
 # Context Sources
 
-The Context Engine may use multiple information sources, including:
+Version 1 may use approved local signals for:
 
-- Running applications.
-- Active window.
-- CPU and GPU utilization.
+- Running and active applications.
 - User activity.
-- Scheduled calendar events.
+- CPU and GPU utilization when available.
+- Available memory.
+- Battery and power state.
 - Time of day.
-- Connected devices.
-- User-defined preferences.
-- Future platform integrations.
 
-The platform should combine multiple signals instead of relying on a single indicator whenever possible.
+System Layer provides operating-system observations through narrow interfaces
+and approved events. Context Engine never calls native APIs directly.
 
----
-
-# Context Usage
-
-Context influences multiple platform behaviors.
-
-Examples include:
-
-Gaming
-
-- Reduce CPU usage.
-- Suppress notifications.
-- Pause non-essential background tasks.
-
-Working
-
-- Enable productivity suggestions.
-- Recommend automations.
-- Surface relevant reminders.
-
-Meeting
-
-- Silence voice notifications.
-- Avoid interruptions.
-- Delay non-critical recommendations.
-
-Studying
-
-- Suggest learning resources.
-- Track study sessions.
-- Minimize distractions.
-
-Idle
-
-- Execute maintenance tasks.
-- Perform synchronization.
-- Learn usage patterns.
+Calendar events, connected devices, external services, and personalized models
+are future sources and require separate architecture.
 
 ---
 
-# Proactive Assistance
+# Context Transitions
 
-Context awareness enables responsible proactivity.
+Context transitions require deterministic confidence and stabilization policy.
+This prevents rapid changes caused by temporary signals.
 
-ATREUS may proactively offer assistance when sufficient contextual confidence exists.
+Numeric thresholds and time windows are not defined by this ADR. Future
+implementations receive configurable defaults through validated configuration.
 
-Examples include:
+Only Context Engine commits a context transition. Core and other modules consume
+the resulting snapshot or `ContextChanged` event.
 
-- Suggest opening frequently used development tools.
-- Recommend breaks after extended work sessions.
-- Warn about low storage availability.
-- Detect repetitive workflows.
-- Offer relevant automations.
+---
 
-Proactive behavior should always remain predictable, transparent, and optional.
+# Operational State Relationship
+
+Context and operational state are separate concepts.
+
+- Context Engine provides current user context.
+- System Layer provides current system signals.
+- Decision Engine may determine a desired transition between `ACTIVE`,
+  `PASSIVE`, and `STANDBY`.
+- Core owns operational state and applies the approved transition.
+
+A `GAMING` context may contribute to a `STANDBY` decision, but Context Engine
+never activates Standby directly.
+
+---
+
+# Performance Profile Relationship
+
+Context and performance profile are also separate concepts.
+
+Decision Engine determines the desired `PERFORMANCE`, `BALANCED`, or `IDLE`
+profile from context, validated configuration, user policy, and System Layer
+signals. Core records and propagates the active profile. Modules adapt their own
+permitted activity to that profile.
+
+The `IDLE` user context and `IDLE` performance profile have different contracts
+and must not be represented by one shared enum or state value.
+
+---
+
+# Context-Informed Behavior
+
+Context may influence downstream decisions such as:
+
+## Gaming
+
+- Prefer reduced non-essential activity.
+- Avoid proactive interruption.
+- Delay eligible maintenance.
+
+## Working
+
+- Permit relevant productivity suggestions.
+- Surface approved reminders.
+
+## Meeting
+
+- Prefer interruption suppression.
+- Delay non-critical suggestions.
+
+## Studying
+
+- Prefer focus-preserving behavior.
+- Permit relevant learning assistance.
+
+## Idle
+
+- Permit eligible deferred work when the active operational state and
+  performance profile allow it.
+
+These are Decision Engine inputs and policy outcomes. Context Engine does not
+perform any listed behavior.
+
+---
+
+# Responsible Proactivity
+
+Context awareness enables optional proactive assistance when confidence, user
+policy, operational state, and performance profile permit it.
+
+Proactive behavior must be transparent, predictable, non-intrusive, and always
+subject to user control. Context alone never authorizes an action.
 
 ---
 
 # Privacy Considerations
 
-Context awareness must always respect user privacy.
+Users control which context sources are enabled and which contextual behaviors
+are permitted.
 
-Users remain in full control of:
+Raw active-window titles, file names, process arguments, user input contents,
+and detailed activity history must not appear in public snapshots, events, or
+default logs.
 
-- Which context sources are monitored.
-- Which contextual behaviors are enabled.
-- What information may be stored.
-- How long contextual information is retained.
-
-Context collection must never become hidden surveillance.
-
-Transparency is a mandatory design principle.
+Signals are retained only as long as required for current evaluation unless a
+separate approved Memory policy exists. Context collection must never become
+hidden surveillance.
 
 ---
 
 # Rationale
 
-Making context a fundamental architectural component enables ATREUS to become significantly more adaptive without increasing user effort.
+Context awareness allows ATREUS to adapt without requiring constant manual mode
+selection.
 
-Instead of requiring continuous manual interaction, the platform can intelligently adjust its behavior according to the user's current situation.
-
-This improves usability while reducing unnecessary interruptions.
+Deterministic local signals improve responsiveness, privacy, performance, and
+predictability. Separating observation, decision, and application prevents
+Context Engine from becoming an execution component.
 
 ---
 
 # Consequences
 
-Positive:
+Positive consequences:
 
-- More natural interaction.
-- Better proactive assistance.
-- Reduced unnecessary notifications.
-- Improved user experience.
-- Better resource management.
-- Foundation for future learning capabilities.
+- More relevant and less intrusive behavior.
+- Better adaptive performance input.
+- Foundation for responsible proactivity.
+- Central source of truth for current context.
+- Explicit privacy and event ownership.
 
 Trade-offs:
 
-- Increased architectural complexity.
-- Requires accurate context detection.
-- Context classification may occasionally be incorrect.
-- Additional privacy safeguards become necessary.
+- Context rules and stabilization require careful testing.
+- Signal availability differs across systems.
+- Incorrect context may influence downstream decisions.
+- Privacy controls are mandatory.
 
 ---
 
 # Alternatives Considered
 
-## Reactive-only Architecture
+## Reactive-Only Architecture
 
-Rejected.
+Rejected because it ignores valuable local context and prevents responsible
+adaptation.
 
-Waiting exclusively for explicit user commands prevents proactive assistance and ignores valuable contextual information.
+## AI-Only Context Detection
 
----
+Rejected because deterministic system information is generally faster, more
+private, predictable, and reliable for Version 1.
 
-## AI-Based Context Detection
+## Required Manual Context Selection
 
-Rejected.
-
-Although AI may contribute to context understanding in specific scenarios, context detection should primarily rely on deterministic system information whenever possible.
-
-This improves performance, predictability, privacy, and reliability.
-
----
-
-## Manual Context Selection
-
-Rejected.
-
-Requiring the user to manually select their current context creates unnecessary friction and reduces the platform's intelligence.
-
-Automatic detection remains the preferred approach.
+Rejected as the primary model because it creates unnecessary user friction.
+Users still control enabled sources and may override supported platform
+behavior through configuration.
 
 ---
 
 # Related Components
 
-- Context Engine
-- Decision Engine
-- Core
-- Planner
-- Memory
-- Skill Manager
-- Event Bus
+- Context Engine.
+- System Layer.
+- Decision Engine.
+- Core.
+- Event Bus.
+- Planner.
+- Working Memory.
+- Capability Runtime.
 
 ---
 
 # Future Considerations
 
-Future versions of ATREUS may introduce:
+Future versions may add multi-context representation, calibrated confidence,
+personalized models, or approved cross-device signals.
 
-- Multi-context detection.
-- Context confidence scoring.
-- Personalized context models.
-- Environmental awareness.
-- Cross-device context synchronization.
-
-The Context Engine should continuously evolve without requiring changes to the platform's overall architecture.
+Future strategies must preserve Context Engine as an observer and single source
+of context, with Core retaining lifecycle ownership and Decision Engine retaining
+policy ownership.

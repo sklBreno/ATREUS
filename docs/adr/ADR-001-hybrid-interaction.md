@@ -4,23 +4,19 @@
 
 **Date:** 2026-07-02
 
+**Last Updated:** 2026-08-17
+
 ---
 
 # Context
 
-One of the earliest architectural decisions of ATREUS concerns how user interactions should be interpreted.
+ATREUS must support efficient deterministic requests as well as natural,
+high-level interaction.
 
-Traditional assistants usually rely on one interaction model.
-
-Some systems expect explicit commands.
-
-Others depend almost entirely on natural language and Large Language Models.
-
-Neither approach fully satisfies the goals of ATREUS.
-
-The platform is intended to become a long-term personal intelligence system capable of responding efficiently to simple requests while also understanding complex intentions and natural conversations.
-
-This requires a more flexible interaction model.
+Command-only systems are too restrictive. AI-only systems add unnecessary
+latency, cost, privacy exposure, and provider dependency. A single interaction
+category cannot represent direct commands, broad intentions, questions,
+conversations, and constrained tasks accurately.
 
 ---
 
@@ -28,174 +24,202 @@ This requires a more flexible interaction model.
 
 ATREUS adopts a hybrid interaction model.
 
-Every user request will first be classified before any execution takes place.
+Every user request is classified before the Core determines the next
+orchestration step.
 
-The system supports multiple categories of interaction instead of treating every message as plain text.
+Version 1 request types are:
 
-The initial request types are:
+- `COMMAND`.
+- `INTENTION`.
+- `QUESTION`.
+- `TASK`.
+- `CONVERSATION`.
 
-- Command
-- Intention
-- Question
-- Task
-- Conversation
+The Request Classifier identifies request type and confidence. It does not
+select a destination, route execution, create a plan, answer the request, or
+invoke a capability.
 
-The Request Classifier is responsible for identifying the request type and routing it to the appropriate module.
+The Core owns routing. It assembles current context, platform state, user
+policy, configuration, and capability metadata for the Decision Engine. The
+Decision Engine returns an explicit outcome, and the Core applies that outcome
+through the appropriate interface.
 
-Examples:
+---
 
-Command
+# Interaction Examples
+
+## Command
 
 > "Open Visual Studio Code."
 
-↓
+```text
+Request Classifier: COMMAND
+    ↓
+Core
+    ↓
+Decision Engine: EXECUTE
+    ↓
+Capability Runtime
+```
 
-Skill Manager
+A direct command may use a deterministic capability without AI.
 
 ---
 
-Intention
+## Intention
 
 > "Let's work on ATREUS."
 
-↓
-
+```text
+Request Classifier: INTENTION
+    ↓
+Core
+    ↓
+Decision Engine: REQUEST_PLANNING
+    ↓
 Planner
+    ↓
+Core coordinates approved PlanStep objects through Capability Runtime
+```
 
-↓
-
-Multiple Skills
+The Planner creates data. It does not execute the plan.
 
 ---
 
-Question
+## Question
 
 > "What is Active Directory?"
 
-↓
+```text
+Request Classifier: QUESTION
+    ↓
+Core
+    ↓
+Decision Engine: DELEGATE or EXECUTE
+    ↓
+AI Provider or a deterministic information capability
+```
 
-AI Provider
+AI is used only when it adds value and an approved provider is available.
 
 ---
 
-Task
+## Task
 
 > "Remind me tomorrow at 8 AM."
 
-↓
+```text
+Request Classifier: TASK
+    ↓
+Core
+    ↓
+Decision Engine: REQUEST_PLANNING or ASK_FOR_CONFIRMATION
+    ↓
+Planner when the task is supported by available capabilities
+```
 
-Planner
-
-↓
-
-Task Scheduler
+`TASK` is a classification category. It does not imply a dedicated scheduling
+module in Version 1. Unsupported timing behavior must be reported explicitly.
 
 ---
 
-Conversation
+## Conversation
 
 > "Good morning."
 
-↓
+```text
+Request Classifier: CONVERSATION
+    ↓
+Core
+    ↓
+Decision Engine
+    ↓
+Deterministic response capability, AI Provider, or no action
+```
 
-Conversation Engine
+`CONVERSATION` does not require a dedicated conversation module in Version 1.
 
 ---
 
-The user is not required to specify the request type explicitly.
+# Automatic Classification
 
-Classification is performed automatically by the platform.
+The user does not specify the request type manually.
+
+Request Classifier returns one supported type and confidence. Ambiguous input
+remains explicit through low confidence so Decision Engine can choose
+`ASK_FOR_CONFIRMATION` instead of allowing the classifier to guess a workflow.
 
 ---
 
 # Rationale
 
-This architecture provides several advantages.
+The hybrid model provides:
 
-Simple commands can be executed immediately without requiring an AI model.
-
-Complex intentions can be decomposed into multiple actions.
-
-Questions can leverage AI only when necessary.
-
-Tasks can be scheduled independently from conversations.
-
-This separation improves performance, maintainability, modularity, and user experience.
-
-It also prevents the platform from depending entirely on Large Language Models.
+- Fast deterministic execution for clear commands.
+- Explicit planning for supported high-level goals.
+- Optional AI use for requests that benefit from it.
+- Separate handling for constrained tasks and conversations.
+- Reduced dependency on language models.
+- Clear ownership between classification, decision, orchestration, planning,
+  and execution.
 
 ---
 
 # Consequences
 
-Positive:
+Positive consequences:
 
-- Faster execution of deterministic actions.
-- Reduced AI dependency.
-- Lower operational costs.
-- Improved modularity.
-- Easier expansion of new request types.
-- Better separation of responsibilities.
+- Lower latency for deterministic operations.
+- Reduced AI dependency and external data exposure.
+- Better modularity and testability.
+- Explicit handling of ambiguity through confidence.
+- New request types can be introduced through documented contract changes.
 
 Trade-offs:
 
-- Requires an additional classification layer.
-- Incorrect classifications may lead to inappropriate routing.
-- The Request Classifier becomes a critical component of the platform.
+- Classification becomes a critical request-path component.
+- Incorrect classifications can influence later decisions.
+- Core and Decision Engine must handle low-confidence results predictably.
+- Adding a request type requires coordinated policy and test updates.
 
 ---
 
 # Alternatives Considered
 
-## Command-only architecture
+## Command-Only Architecture
 
-Rejected.
+Rejected because it cannot support natural intentions, questions, or responsible
+proactivity.
 
-Although simple and efficient, it does not support natural interaction or proactive assistance.
+## AI-Only Architecture
 
----
+Rejected because it introduces unnecessary latency, cost, privacy exposure, and
+provider dependency.
 
-## AI-only architecture
+## Intent-Only Architecture
 
-Rejected.
-
-Sending every request directly to a language model introduces unnecessary latency, higher costs, and excessive dependence on external AI providers.
-
----
-
-## Intent-only architecture
-
-Rejected.
-
-Intentions alone cannot accurately represent every interaction.
-
-Direct commands, scheduled tasks, and casual conversations require different execution paths.
-
-The hybrid model provides greater flexibility while maintaining a consistent user experience.
+Rejected because direct commands, questions, tasks, and conversations have
+different semantics and orchestration needs.
 
 ---
 
 # Related Components
 
-- Request Classifier
-- Core
-- Planner
-- Skill Manager
-- AI Provider
-- Conversation Engine
+- Request Classifier.
+- Core.
+- Decision Engine.
+- Planner.
+- Capability Registry.
+- Capability Runtime.
+- AI Provider.
+- Event Bus.
 
 ---
 
 # Future Considerations
 
-The list of request types may expand in future versions.
+New request types require explicit architecture, Decision Engine policy, Core
+orchestration behavior, and contract tests.
 
-Possible additions include:
-
-- Notification
-- System Event
-- Automation Trigger
-- Workflow
-- Emergency
-
-The hybrid model is designed to evolve without requiring changes to the platform's core architecture.
+Possible future categories such as system events or automation triggers must not
+be added to Version 1 implicitly.
