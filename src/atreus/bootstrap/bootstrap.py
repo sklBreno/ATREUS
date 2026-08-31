@@ -1,19 +1,33 @@
+"""Application bootstrap orchestration for the ATREUS foundation runtime."""
+
 from atreus.configuration.configuration import Configuration
+from atreus.configuration.configuration_manager import ConfigurationManager
+from atreus.interfaces.configuration import ConfigurationProvider
 
 
 class Bootstrap:
+    """Initialize the foundation services required by the ATREUS runtime."""
 
-    def run(self) -> None:
+    def __init__(
+        self,
+        configuration_provider: ConfigurationProvider | None = None,
+    ) -> None:
+        """Initialize Bootstrap with an injectable configuration provider.
 
-        configuration = Configuration()
+        Args:
+            configuration_provider: Provider for the validated application
+                configuration.
+        """
+        self._configuration_provider = (
+            configuration_provider
+            if configuration_provider is not None
+            else ConfigurationManager()
+        )
 
-        print("=" * 50)
-        print(configuration.app_name)
-        print("Personal Intelligence Platform")
-        print(f"Version: {configuration.version}")
-        print("Status: Initializing...")
-        print("=" * 50)
+    def run(self) -> Configuration:
+        """Initialize and return the foundation runtime configuration.
 
-        print("Loading configuration...")
-
-        print("Initialization complete!")
+        Returns:
+            The validated, immutable application configuration.
+        """
+        return self._configuration_provider.load()
