@@ -19,3 +19,4 @@ class StructuredLogRecord:
     decision_outcome: str | None = None
     execution_status: str | None = None
     reason_code: str | None = None
+    lifecycle_state: str | None = None

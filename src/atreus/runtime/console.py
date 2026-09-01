@@ -5,6 +5,7 @@ from collections.abc import Callable
 from atreus.core.models import CoreRequestResult
 from atreus.decision.models import DecisionOutcome
 from atreus.execution.models import CapabilityExecutionStatus
+from atreus.interfaces.foreground_interface import ForegroundInterface
 from atreus.system.models import ApplicationIdentifier
 
 type RequestHandler = Callable[[str], CoreRequestResult]
@@ -14,7 +15,7 @@ type OutputWriter = Callable[[str], None]
 _EXIT_COMMANDS = frozenset({"exit", "quit"})
 
 
-class InteractiveConsole:
+class InteractiveConsole(ForegroundInterface):
     """Read foreground text requests and display sanitized runtime results."""
 
     def __init__(
