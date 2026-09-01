@@ -15,3 +15,11 @@ class SystemPermissionDeniedError(SystemLayerException):
 
 class SystemOperationCancelledError(SystemLayerException):
     """Raised when cooperative cancellation precedes an operation."""
+
+
+class UnsupportedSystemOperationError(SystemLayerException):
+    """Raised when the current platform cannot perform an operation."""
+
+
+class SystemNativeAdapterError(SystemLayerException):
+    """Raised when an operating-system adapter reports a safe failure."""

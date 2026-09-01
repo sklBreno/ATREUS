@@ -7,15 +7,24 @@ import pytest
 
 from atreus.shared.cancellation import StaticCancellationSignal
 from atreus.system.exceptions import (
+    InvalidSystemOperationError,
+    SystemNativeAdapterError,
     SystemOperationCancelledError,
     SystemPermissionDeniedError,
+    UnsupportedSystemOperationError,
 )
 from atreus.system.models import (
+    APPLICATION_CONTROL_PERMISSION,
+    ApplicationIdentifier,
+    ApplicationLaunchRequest,
     MetricAvailabilityStatus,
     PowerSource,
     SystemOperationContext,
 )
 from atreus.system.system_information import UnavailableSystemInformationProvider
+from atreus.system.windows_application_controller import (
+    WindowsApplicationController,
+)
 from tests.support import NOW, FixedClock
 
 
@@ -68,3 +77,82 @@ def test_system_information_boundary_has_no_arbitrary_execution() -> None:
     assert not hasattr(provider, "execute_command")
     assert not hasattr(provider, "shell")
     assert not hasattr(provider, "write_file")
+
+
+def test_windows_controller_launches_only_allowlisted_calculator_command() -> None:
+    commands: list[tuple[str, ...]] = []
+
+    def start_process(command: tuple[str, ...]) -> int:
+        commands.append(command)
+        return 4321
+
+    controller = WindowsApplicationController(start_process, "win32")
+    context = make_context(grants=(APPLICATION_CONTROL_PERMISSION,))
+
+    instance = controller.launch(
+        ApplicationLaunchRequest(ApplicationIdentifier.CALCULATOR),
+        context,
+    )
+
+    assert commands == [("calc.exe",)]
+    assert instance.application_id is ApplicationIdentifier.CALCULATOR
+    assert instance.process_id == 4321
+
+
+def test_windows_controller_translates_native_launch_failure() -> None:
+    def fail_to_start(command: tuple[str, ...]) -> int:
+        raise OSError(f"private native failure for {command!r}")
+
+    controller = WindowsApplicationController(fail_to_start, "win32")
+
+    with pytest.raises(SystemNativeAdapterError) as captured:
+        controller.launch(
+            ApplicationLaunchRequest(ApplicationIdentifier.CALCULATOR),
+            make_context(grants=(APPLICATION_CONTROL_PERMISSION,)),
+        )
+
+    assert "private native failure" not in str(captured.value)
+
+
+def test_windows_controller_enforces_permission_and_cancellation() -> None:
+    controller = WindowsApplicationController(lambda command: 1234, "win32")
+    request = ApplicationLaunchRequest(ApplicationIdentifier.CALCULATOR)
+
+    with pytest.raises(SystemPermissionDeniedError):
+        controller.launch(request, make_context(grants=()))
+    with pytest.raises(SystemOperationCancelledError):
+        controller.launch(
+            request,
+            make_context(
+                grants=(APPLICATION_CONTROL_PERMISSION,),
+                cancelled=True,
+            ),
+        )
+
+
+def test_windows_controller_rejects_invalid_and_unsupported_requests() -> None:
+    controller = WindowsApplicationController(lambda command: 1234, "win32")
+    invalid_request = ApplicationLaunchRequest("spotify")  # type: ignore[arg-type]
+
+    with pytest.raises(InvalidSystemOperationError):
+        controller.launch(
+            invalid_request,
+            make_context(grants=(APPLICATION_CONTROL_PERMISSION,)),
+        )
+    with pytest.raises(UnsupportedSystemOperationError):
+        WindowsApplicationController(
+            lambda command: 1234,
+            "linux",
+        ).launch(
+            ApplicationLaunchRequest(ApplicationIdentifier.CALCULATOR),
+            make_context(grants=(APPLICATION_CONTROL_PERMISSION,)),
+        )
+
+
+def test_application_controller_exposes_no_arbitrary_execution_api() -> None:
+    controller = WindowsApplicationController(lambda command: 1234, "win32")
+
+    assert not hasattr(controller, "run")
+    assert not hasattr(controller, "execute_command")
+    assert not hasattr(controller, "shell")
+    assert not hasattr(controller, "start_process")

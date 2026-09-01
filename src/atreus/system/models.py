@@ -8,6 +8,13 @@ from uuid import UUID
 from atreus.interfaces.cancellation import CancellationSignal
 
 SYSTEM_METRICS_READ_PERMISSION = "system.metrics.read"
+APPLICATION_CONTROL_PERMISSION = "application.control"
+
+
+class ApplicationIdentifier(StrEnum):
+    """Identify one application approved for controlled system launch."""
+
+    CALCULATOR = "calculator"
 
 
 class MetricAvailabilityStatus(StrEnum):
@@ -35,6 +42,21 @@ class SystemOperationContext:
     capability_id: str
     permission_grants: tuple[str, ...]
     cancellation: CancellationSignal
+
+
+@dataclass(frozen=True, slots=True)
+class ApplicationLaunchRequest:
+    """Request launch of one explicitly identified approved application."""
+
+    application_id: ApplicationIdentifier
+
+
+@dataclass(frozen=True, slots=True)
+class ApplicationInstance:
+    """Represent one normalized result of an application launch."""
+
+    application_id: ApplicationIdentifier
+    process_id: int
 
 
 @dataclass(frozen=True, slots=True)

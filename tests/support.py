@@ -12,9 +12,15 @@ from atreus.capability.models import CapabilityMetadata
 from atreus.context.models import ContextSnapshot
 from atreus.execution.models import ExecutionContext
 from atreus.interfaces.ai_availability import AIAvailabilityProvider
+from atreus.interfaces.application_controller import ApplicationController
 from atreus.interfaces.capability import Capability
 from atreus.interfaces.clock import Clock
 from atreus.interfaces.context import ContextProvider
+from atreus.system.models import (
+    ApplicationInstance,
+    ApplicationLaunchRequest,
+    SystemOperationContext,
+)
 
 NOW = datetime(2026, 8, 31, 12, 0, tzinfo=UTC)
 
@@ -53,6 +59,24 @@ class StaticAIAvailabilityProvider(AIAvailabilityProvider):
     def availability(self) -> AIProviderAvailability:
         """Return the configured availability."""
         return self._availability
+
+
+class RecordingApplicationController(ApplicationController):
+    """Record approved application launches without native side effects."""
+
+    def __init__(self, process_id: int = 4242) -> None:
+        """Initialize the controller with a deterministic process identifier."""
+        self._process_id = process_id
+        self.calls: list[tuple[ApplicationLaunchRequest, SystemOperationContext]] = []
+
+    def launch(
+        self,
+        request: ApplicationLaunchRequest,
+        context: SystemOperationContext,
+    ) -> ApplicationInstance:
+        """Record and return one normalized application instance."""
+        self.calls.append((request, context))
+        return ApplicationInstance(request.application_id, self._process_id)
 
 
 class RecordingCapability(Capability):
