@@ -2,9 +2,9 @@
 
 **Status:** Draft
 
-**Version:** 1.0
+**Version:** 1.1
 
-**Last Updated:** 2026-08-17
+**Last Updated:** 2026-09-01
 
 ---
 
@@ -98,6 +98,9 @@ event.
 Examples:
 
 - The Core owns platform lifecycle and request lifecycle events.
+- The Runtime Host owns foreground process lifecycle events:
+  `RuntimeStarting`, `RuntimeStarted`, `RuntimeStopping`, `RuntimeStopped`, and
+  `RuntimeFailed`.
 - The Context Engine owns `ContextChanged`.
 - The Planner owns `PlanCreated`.
 - The Capability Runtime owns capability execution events.

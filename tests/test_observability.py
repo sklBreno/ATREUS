@@ -23,6 +23,14 @@ from atreus.logging.jsonl_writer import JsonLinesLogWriter
 from atreus.logging.models import StructuredLogRecord
 from atreus.planner.models import PlanCreated
 from atreus.request_classifier.models import RequestClassified, RequestType
+from atreus.runtime.models import (
+    RuntimeFailed,
+    RuntimeLifecycleState,
+    RuntimeStarted,
+    RuntimeStarting,
+    RuntimeStopped,
+    RuntimeStopping,
+)
 from atreus.system.windows_application_controller import (
     WindowsApplicationController,
 )
@@ -94,7 +102,7 @@ def test_json_lines_writer_respects_minimum_level(tmp_path: Path) -> None:
     assert [record["event_type"] for record in records] == ["ErrorOccurred"]
 
 
-def test_observer_subscribes_to_complete_request_lifecycle() -> None:
+def test_observer_subscribes_to_runtime_and_request_lifecycle() -> None:
     request_id = uuid4()
     invocation_id = uuid4()
     writer = RecordingLogWriter()
@@ -167,12 +175,39 @@ def test_observer_subscribes_to_complete_request_lifecycle() -> None:
             orchestration_step="planning",
             error_type="InconsistentPlanError",
         ),
+        RuntimeStarting(
+            source="runtime_host",
+            occurred_at=NOW,
+            lifecycle_state=RuntimeLifecycleState.STARTING,
+        ),
+        RuntimeStarted(
+            source="runtime_host",
+            occurred_at=NOW,
+            lifecycle_state=RuntimeLifecycleState.RUNNING,
+        ),
+        RuntimeStopping(
+            source="runtime_host",
+            occurred_at=NOW,
+            lifecycle_state=RuntimeLifecycleState.STOPPING,
+        ),
+        RuntimeStopped(
+            source="runtime_host",
+            occurred_at=NOW,
+            lifecycle_state=RuntimeLifecycleState.STOPPED,
+        ),
+        RuntimeFailed(
+            source="runtime_host",
+            occurred_at=NOW,
+            lifecycle_state=RuntimeLifecycleState.FAILED,
+            failure_stage="startup",
+            error_type="OSError",
+        ),
     )
 
     for event in events:
         event_bus.publish(event)
 
-    assert len(subscriptions) == 9
+    assert len(subscriptions) == 14
     assert [record.event_type for record in writer.records] == [
         "RequestReceived",
         "RequestClassified",
@@ -183,7 +218,44 @@ def test_observer_subscribes_to_complete_request_lifecycle() -> None:
         "CapabilityExecutionFailed",
         "RequestCompleted",
         "ErrorOccurred",
+        "RuntimeStarting",
+        "RuntimeStarted",
+        "RuntimeStopping",
+        "RuntimeStopped",
+        "RuntimeFailed",
     ]
+
+
+def test_runtime_failure_log_is_structured_and_sanitized(tmp_path: Path) -> None:
+    log_path = tmp_path / "logs" / "atreus.log"
+
+    def fail_input(prompt: str) -> str:
+        raise RuntimeError("private terminal and environment detail")
+
+    host = Bootstrap(
+        configuration_provider=make_configuration_manager(),
+        application_controller=RecordingApplicationController(),
+        clock=FixedClock(),
+        log_path=log_path,
+    ).compose_host(fail_input, lambda output: None)
+
+    assert host.run() == 1
+
+    records = read_json_lines(log_path)
+    assert [record["event_type"] for record in records] == [
+        "RuntimeStarting",
+        "RuntimeStarted",
+        "RuntimeFailed",
+    ]
+    assert [record["lifecycle_state"] for record in records] == [
+        "STARTING",
+        "RUNNING",
+        "FAILED",
+    ]
+    assert records[-1]["reason_code"] == "foreground_interface:RuntimeError"
+    serialized = log_path.read_text(encoding="utf-8")
+    assert "private terminal" not in serialized
+    assert "environment detail" not in serialized
 
 
 def test_bootstrap_logs_correlated_success_without_sensitive_data(

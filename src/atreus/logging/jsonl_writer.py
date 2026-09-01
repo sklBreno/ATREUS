@@ -81,6 +81,7 @@ class JsonLinesLogWriter(LogWriter):
             "decision_outcome": record.decision_outcome,
             "execution_status": record.execution_status,
             "reason_code": record.reason_code,
+            "lifecycle_state": record.lifecycle_state,
         }
         payload.update(
             {

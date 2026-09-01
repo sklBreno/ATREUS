@@ -14,6 +14,13 @@ from atreus.interfaces.log_writer import LogWriter
 from atreus.logging.models import StructuredLogRecord
 from atreus.planner.models import PlanCreated
 from atreus.request_classifier.models import RequestClassified
+from atreus.runtime.models import (
+    RuntimeFailed,
+    RuntimeStarted,
+    RuntimeStarting,
+    RuntimeStopped,
+    RuntimeStopping,
+)
 
 type ObservableEvent = (
     RequestReceived
@@ -25,11 +32,16 @@ type ObservableEvent = (
     | CapabilityExecutionFailed
     | RequestCompleted
     | ErrorOccurred
+    | RuntimeStarting
+    | RuntimeStarted
+    | RuntimeStopping
+    | RuntimeStopped
+    | RuntimeFailed
 )
 
 
 class EventLogObserver:
-    """Observe request lifecycle facts without influencing their publishers."""
+    """Observe runtime and request facts without influencing publishers."""
 
     def __init__(self, writer: LogWriter) -> None:
         """Initialize the observer with an injected structured writer.
@@ -40,7 +52,7 @@ class EventLogObserver:
         self._writer = writer
 
     def subscribe(self, event_bus: EventBus) -> tuple[Subscription, ...]:
-        """Subscribe to the complete observable request lifecycle.
+        """Subscribe to the observable runtime and request lifecycle.
 
         Args:
             event_bus: Synchronous Event Bus registration boundary.
@@ -58,6 +70,11 @@ class EventLogObserver:
             event_bus.subscribe(CapabilityExecutionFailed, self._observe),
             event_bus.subscribe(RequestCompleted, self._observe),
             event_bus.subscribe(ErrorOccurred, self._observe),
+            event_bus.subscribe(RuntimeStarting, self._observe),
+            event_bus.subscribe(RuntimeStarted, self._observe),
+            event_bus.subscribe(RuntimeStopping, self._observe),
+            event_bus.subscribe(RuntimeStopped, self._observe),
+            event_bus.subscribe(RuntimeFailed, self._observe),
         )
 
     def _observe(self, event: ObservableEvent) -> None:
@@ -69,23 +86,41 @@ class EventLogObserver:
             "timestamp": event.occurred_at,
             "event_type": type(event).__name__,
             "correlation_id": event.correlation_id,
-            "request_id": event.request_id,
         }
-        if isinstance(event, RequestReceived):
+        if isinstance(event, RuntimeFailed):
             return StructuredLogRecord(
                 **common,
+                level="ERROR",
+                lifecycle_state=event.lifecycle_state.value,
+                reason_code=f"{event.failure_stage}:{event.error_type}",
+                message="Runtime lifecycle failed.",
+            )
+        if isinstance(
+            event,
+            (RuntimeStarting, RuntimeStarted, RuntimeStopping, RuntimeStopped),
+        ):
+            return StructuredLogRecord(
+                **common,
+                level="INFO",
+                lifecycle_state=event.lifecycle_state.value,
+                message="Runtime lifecycle state changed.",
+            )
+        request_common = {**common, "request_id": event.request_id}
+        if isinstance(event, RequestReceived):
+            return StructuredLogRecord(
+                **request_common,
                 level="INFO",
                 message="Request accepted by Core.",
             )
         if isinstance(event, RequestClassified):
             return StructuredLogRecord(
-                **common,
+                **request_common,
                 level="INFO",
                 message="Request classification completed.",
             )
         if isinstance(event, DecisionMade):
             return StructuredLogRecord(
-                **common,
+                **request_common,
                 level="INFO",
                 decision_outcome=event.outcome.value,
                 reason_code=event.reason_code,
@@ -93,20 +128,20 @@ class EventLogObserver:
             )
         if isinstance(event, PlanCreated):
             return StructuredLogRecord(
-                **common,
+                **request_common,
                 level="INFO",
                 message="Request plan created.",
             )
         if isinstance(event, CapabilityExecutionStarted):
             return StructuredLogRecord(
-                **common,
+                **request_common,
                 level="INFO",
                 capability_id=event.capability_id,
                 message="Capability execution started.",
             )
         if isinstance(event, CapabilityExecutionCompleted):
             return StructuredLogRecord(
-                **common,
+                **request_common,
                 level="INFO",
                 capability_id=event.capability_id,
                 execution_status=CapabilityExecutionStatus.SUCCEEDED.value,
@@ -114,7 +149,7 @@ class EventLogObserver:
             )
         if isinstance(event, CapabilityExecutionFailed):
             return StructuredLogRecord(
-                **common,
+                **request_common,
                 level="ERROR",
                 capability_id=event.capability_id,
                 execution_status=event.terminal_status.value,
@@ -132,7 +167,7 @@ class EventLogObserver:
                 else None
             )
             return StructuredLogRecord(
-                **common,
+                **request_common,
                 level="ERROR" if failed else "INFO",
                 decision_outcome=event.decision_outcome.value,
                 execution_status=execution_status,
@@ -140,7 +175,7 @@ class EventLogObserver:
             )
         if isinstance(event, ErrorOccurred):
             return StructuredLogRecord(
-                **common,
+                **request_common,
                 level="ERROR",
                 reason_code=event.error_type,
                 message="Request orchestration failed.",

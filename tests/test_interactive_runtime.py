@@ -169,8 +169,13 @@ def test_console_exits_cleanly_when_processing_is_interrupted() -> None:
 
 def test_entrypoint_starts_and_exits_without_launching_an_application() -> None:
     outputs: list[str] = []
+    bootstrap = Bootstrap(
+        application_controller=RecordingApplicationController(),
+        clock=FixedClock(),
+        log_writer=RecordingLogWriter(),
+    )
 
-    assert main(lambda prompt: "exit", outputs.append) == 0
+    assert main(lambda prompt: "exit", outputs.append, bootstrap) == 0
     assert outputs == []
 
 

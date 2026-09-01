@@ -4,7 +4,7 @@
 
 **Date:** 2026-07-02
 
-**Last Updated:** 2026-08-31
+**Last Updated:** 2026-09-01
 
 ---
 
@@ -94,6 +94,25 @@ When the operating system starts:
 6. Optional modules are loaded on demand.
 
 The platform should become operational as quickly as possible without delaying system startup.
+
+## Version 0 Implementation Boundary
+
+Always-On V0 is a foreground persistent runtime, not an operating-system
+service. Bootstrap composes one local Runtime Host, which owns the explicit
+process lifecycle `CREATED`, `STARTING`, `RUNNING`, `STOPPING`, `STOPPED`, and
+`FAILED`. The Host governs the foreground request interface and publishes its
+lifecycle facts through the existing synchronous Event Bus.
+
+The Version 0 process starts only when explicitly invoked and stops on an exit
+request, end of input, or interruption. It does not provide automatic startup,
+background execution, a system tray, auto-restart, polling, threads, or
+asynchronous infrastructure. These constraints are an incremental delivery
+boundary and do not replace the accepted long-term decision above.
+
+Runtime Host lifecycle is independent from the Core-owned operational state
+and active performance profile. Entering `STOPPING` does not introduce another
+operational state, and the Host does not decide operational-state or
+performance-profile transitions.
 
 ---
 

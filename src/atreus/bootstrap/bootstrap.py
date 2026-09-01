@@ -23,6 +23,8 @@ from atreus.logging.jsonl_writer import JsonLinesLogWriter
 from atreus.planner.models import PlanningConstraints
 from atreus.planner.planner import DeterministicPlanner
 from atreus.request_classifier.classifier import DeterministicRequestClassifier
+from atreus.runtime.console import InputReader, InteractiveConsole, OutputWriter
+from atreus.runtime.host import RuntimeHost
 from atreus.runtime.runtime import InteractiveRuntime
 from atreus.shared.cancellation import StaticCancellationSignal
 from atreus.shared.clock import UTCClock
@@ -92,6 +94,34 @@ class Bootstrap:
         Returns:
             A request boundary backed by the complete production pipeline.
         """
+        runtime, _ = self._compose_runtime()
+        return runtime
+
+    def compose_host(
+        self,
+        input_reader: InputReader = input,
+        output_writer: OutputWriter = print,
+    ) -> RuntimeHost:
+        """Compose the production foreground host and interaction boundary.
+
+        Args:
+            input_reader: Foreground text input callable.
+            output_writer: User-facing text output callable.
+
+        Returns:
+            A created Runtime Host backed by the production request pipeline.
+        """
+        runtime, event_bus = self._compose_runtime()
+        console = InteractiveConsole(
+            runtime.submit,
+            input_reader=input_reader,
+            output_writer=output_writer,
+        )
+        return RuntimeHost(console, event_bus)
+
+    def _compose_runtime(
+        self,
+    ) -> tuple[InteractiveRuntime, InProcessEventBus]:
         configuration = self._configuration_provider.load()
         event_bus = InProcessEventBus()
         log_writer = (
@@ -150,4 +180,4 @@ class Bootstrap:
             ),
             execution_timeout_seconds=None,
         )
-        return InteractiveRuntime(core, self._clock)
+        return InteractiveRuntime(core, self._clock), event_bus

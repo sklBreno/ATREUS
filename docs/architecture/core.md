@@ -2,9 +2,9 @@
 
 **Status:** Draft
 
-**Version:** 1.1
+**Version:** 1.2
 
-**Last Updated:** 2026-08-17
+**Last Updated:** 2026-09-01
 
 ---
 
@@ -37,7 +37,7 @@ should normally enter through an interface, capability, or domain event.
 
 The Core is responsible for:
 
-- Coordinating deterministic startup and graceful shutdown.
+- Coordinating deterministic platform-module startup and graceful shutdown.
 - Managing the platform lifecycle.
 - Owning the current operational state.
 - Recording and propagating the active performance profile.
@@ -66,6 +66,27 @@ The Core is not responsible for:
 - Performing AI processing.
 - Reading environment variables or configuration files.
 - Granting permissions interactively.
+- Owning the foreground process or Runtime Host lifecycle.
+
+---
+
+# Runtime Host Lifecycle
+
+The local Runtime Host owns the outer foreground process lifecycle. Its states
+are `CREATED`, `STARTING`, `RUNNING`, `STOPPING`, `STOPPED`, and `FAILED`. The
+Host starts the composed runtime, governs the foreground interface, and stops
+the process deterministically. It does not classify, decide, plan, or execute
+capabilities.
+
+Core lifecycle responsibilities refer to platform and module orchestration,
+including operational-state and performance-profile changes. They do not make
+Core the owner of the Runtime Host process state. The `lifecycle_phase` in a
+`PlatformStateSnapshot` describes the composed platform phase observed by Core;
+it is not the mutable state of the Runtime Host.
+
+Runtime lifecycle state, operational state, and performance profile are
+independent contracts. Stopping the Runtime Host does not create a new
+`OperationalState` or `PerformanceProfile`.
 
 ---
 
