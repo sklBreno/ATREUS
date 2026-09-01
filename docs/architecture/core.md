@@ -229,6 +229,12 @@ Core correlates result and publishes RequestCompleted or ErrorOccurred
 The Core never asks the Request Classifier to select a destination. It never
 passes an entire plan to Capability Runtime because Core owns step progression.
 
+After classification, Core captures exactly one immutable `ContextSnapshot`
+for the request. It reuses that same instance in `DecisionInput`,
+`PlanningRequest`, and every `CapabilityInvocation` created for the request.
+Core does not retain the snapshot after request orchestration completes, and no
+downstream module refreshes it during that request.
+
 Working Memory is used only when a request requires bounded temporary state.
 
 ---
@@ -239,7 +245,8 @@ For an approved plan, Core:
 
 1. Verifies that user confirmation requirements are satisfied.
 2. Creates one immutable `CapabilityInvocation` for the next eligible step.
-3. Includes configured permission grants and current context.
+3. Includes configured permission grants and the context snapshot already
+   captured for the request.
 4. Calls Capability Runtime.
 5. Evaluates the immutable execution result.
 6. Continues, stops, or requests user input according to plan dependencies and

@@ -137,7 +137,6 @@ class Bootstrap:
         registry = InMemoryCapabilityRegistry(event_bus)
         capability_runtime = InProcessCapabilityRuntime(
             registry=registry,
-            context_provider=context_provider,
             ai_availability_provider=UnavailableAIAvailabilityProvider(),
             cancellation=StaticCancellationSignal(),
             clock=self._clock,

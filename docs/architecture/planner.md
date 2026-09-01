@@ -61,6 +61,10 @@ The Planner accepts an immutable `PlanningRequest` containing:
 - `constraints`: Explicit immutable planning constraints.
 - `context`: Current context snapshot relevant to planning.
 
+The context is the same immutable snapshot captured by Core for the request.
+Planner consumes it as planning input and must not select, refresh, merge, or
+persist context.
+
 Constraints may limit available capabilities, require confirmation, or express
 a deadline. They must not contain executable callbacks or implementation
 objects.

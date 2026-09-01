@@ -112,10 +112,16 @@ One capability identifier maps to exactly one loaded implementation.
 - `arguments`: Immutable capability argument values.
 - `timeout_seconds`: Optional positive execution deadline.
 - `permission_grants`: Immutable grants approved for this invocation.
+- `context`: The immutable snapshot captured once by Core for the request.
 
 `ExecutionContext` contains only runtime information required by the capability,
 including correlation identifiers, current context snapshot, cancellation
 signal, and approved grants.
+
+Capability Runtime copies the snapshot reference from `CapabilityInvocation`
+into `ExecutionContext`. It does not depend on `ContextProvider`, capture a new
+snapshot, merge context, or perform inference. This preserves one coherent
+context view throughout a request.
 
 Capabilities receive no direct reference to Core or Capability Registry.
 
@@ -249,6 +255,8 @@ abstraction through constructor injection. Runtime uses AI availability only and
 does not perform operating-system or AI work.
 
 Runtime does not depend on Core, Planner, Decision Engine, or Memory.
+It also does not depend on Context Engine or `ContextProvider`; context arrives
+as immutable invocation data.
 
 ---
 

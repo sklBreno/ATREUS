@@ -67,7 +67,7 @@ def make_context() -> ContextSnapshot:
         0.9,
         NOW,
         NOW,
-        ContextSignalStatus.COMPLETE,
+        ContextSignalStatus.AVAILABLE,
     )
 
 

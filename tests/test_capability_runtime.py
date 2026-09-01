@@ -39,7 +39,6 @@ from atreus.execution.models import (
     CapabilityInvocation,
 )
 from atreus.execution.runtime import InProcessCapabilityRuntime
-from atreus.interfaces.context import ContextProvider
 from atreus.shared.cancellation import StaticCancellationSignal
 from tests.support import (
     NOW,
@@ -47,20 +46,17 @@ from tests.support import (
     FixedClock,
     RecordingCapability,
     StaticAIAvailabilityProvider,
-    StaticContextProvider,
 )
 
 
-def make_context_provider() -> StaticContextProvider:
-    """Create a static context provider for Runtime tests."""
-    return StaticContextProvider(
-        ContextSnapshot(
-            ContextType.WORKING,
-            0.9,
-            NOW,
-            NOW,
-            ContextSignalStatus.COMPLETE,
-        )
+def make_context() -> ContextSnapshot:
+    """Create an available context snapshot for Runtime tests."""
+    return ContextSnapshot(
+        ContextType.WORKING,
+        0.9,
+        NOW,
+        NOW,
+        ContextSignalStatus.AVAILABLE,
     )
 
 
@@ -97,17 +93,19 @@ def make_invocation(
     *,
     permission_grants: tuple[str, ...] = (),
     timeout_seconds: float | None = None,
+    context: ContextSnapshot | None = None,
 ) -> CapabilityInvocation:
     """Create one immutable direct capability invocation."""
     return CapabilityInvocation(
-        uuid4(),
-        uuid4(),
-        None,
-        None,
-        capability_id,
-        (),
-        timeout_seconds,
-        permission_grants,
+        invocation_id=uuid4(),
+        request_id=uuid4(),
+        plan_id=None,
+        step_id=None,
+        capability_id=capability_id,
+        arguments=(),
+        context=context if context is not None else make_context(),
+        timeout_seconds=timeout_seconds,
+        permission_grants=permission_grants,
     )
 
 
@@ -118,14 +116,12 @@ def make_runtime(
     ),
     cancellation: StaticCancellationSignal = StaticCancellationSignal(),
     clock: FixedClock = FixedClock(),
-    context_provider: ContextProvider | None = None,
     event_bus: InProcessEventBus | None = None,
 ) -> tuple[InProcessCapabilityRuntime, InMemoryCapabilityRegistry]:
     """Create an unloaded Capability Runtime and its Registry."""
     registry = InMemoryCapabilityRegistry(event_bus)
     runtime = InProcessCapabilityRuntime(
         registry,
-        context_provider or make_context_provider(),
         StaticAIAvailabilityProvider(AIProviderAvailability(ai_state)),
         cancellation,
         clock,
@@ -166,6 +162,7 @@ def test_successful_invocation_returns_immutable_output() -> None:
     assert result.output == SUCCESS_OUTPUT
     assert result.error_code is None
     assert len(capability.calls) == 1
+    assert capability.calls[0][1].context is invocation.context
     with pytest.raises(FrozenInstanceError):
         result.status = CapabilityExecutionStatus.FAILED  # type: ignore[misc]
 
@@ -252,37 +249,6 @@ def test_pre_requested_cancellation_returns_cancelled_without_execution() -> Non
 
     assert result.status is CapabilityExecutionStatus.CANCELLED
     assert capability.calls == []
-
-
-class FailingContextProvider(ContextProvider):
-    """Raise while the Runtime acquires execution context."""
-
-    def current_context(self) -> ContextSnapshot:
-        """Raise a private context-provider failure."""
-        raise RuntimeError("private context detail")
-
-
-def test_context_failure_after_started_produces_one_failed_terminal_event() -> None:
-    event_bus = InProcessEventBus()
-    lifecycle: list[object] = []
-    event_bus.subscribe(CapabilityExecutionStarted, lifecycle.append)
-    event_bus.subscribe(CapabilityExecutionFailed, lifecycle.append)
-    runtime, _ = make_runtime(
-        context_provider=FailingContextProvider(),
-        event_bus=event_bus,
-    )
-    capability = RecordingCapability(make_metadata(), output=SUCCESS_OUTPUT)
-    runtime.load((capability,))
-
-    result = runtime.invoke(make_invocation())
-
-    assert result.status is CapabilityExecutionStatus.FAILED
-    assert result.error_code == "capability_execution_failed"
-    assert capability.calls == []
-    assert [type(event) for event in lifecycle] == [
-        CapabilityExecutionStarted,
-        CapabilityExecutionFailed,
-    ]
 
 
 def test_invalid_timeout_is_rejected_before_execution() -> None:
