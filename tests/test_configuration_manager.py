@@ -13,6 +13,8 @@ def test_manager_creates_configuration_from_loaded_values() -> None:
         environment={
             "ATREUS_LANGUAGE": "en-US",
             "ATREUS_ALWAYS_ON": "false",
+            "ATREUS_WORKING_MEMORY_CAPACITY": "24",
+            "ATREUS_WORKING_MEMORY_ENTRY_TTL_SECONDS": "600",
         },
     )
 
@@ -20,6 +22,8 @@ def test_manager_creates_configuration_from_loaded_values() -> None:
 
     assert configuration.language == "en-US"
     assert configuration.always_on is False
+    assert configuration.working_memory_capacity == 24
+    assert configuration.working_memory_entry_ttl_seconds == 600
 
 
 def test_manager_returns_same_configuration_instance() -> None:

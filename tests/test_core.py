@@ -47,9 +47,11 @@ from atreus.interfaces.capability import Capability
 from atreus.interfaces.capability_runtime import CapabilityRuntime
 from atreus.interfaces.context import ContextProvider
 from atreus.interfaces.decision_engine import DecisionEngine
+from atreus.interfaces.memory import MemorySnapshotProvider
 from atreus.interfaces.planner import Planner
 from atreus.interfaces.request_classifier import RequestClassifier
 from atreus.interfaces.system_information import SystemInformationProvider
+from atreus.memory.models import MemorySnapshot
 from atreus.planner.models import (
     Plan,
     PlanCreated,
@@ -79,6 +81,7 @@ from tests.support import (
     RecordingApplicationController,
     StaticAIAvailabilityProvider,
     StaticContextProvider,
+    StaticMemorySnapshotProvider,
 )
 
 
@@ -109,6 +112,7 @@ def build_core(
     application_controller: ApplicationController | None = None,
     user_policy: UserPolicy | None = None,
     context_provider: ContextProvider | None = None,
+    memory_snapshot_provider: MemorySnapshotProvider | None = None,
 ) -> tuple[Core, InProcessEventBus]:
     """Compose the complete controlled Phase B pipeline for tests."""
     event_bus = InProcessEventBus()
@@ -149,6 +153,9 @@ def build_core(
         planner=planner or DeterministicPlanner(registry, clock, event_bus),
         capability_runtime=runtime,
         context_provider=selected_context_provider,
+        memory_snapshot_provider=(
+            memory_snapshot_provider or StaticMemorySnapshotProvider()
+        ),
         platform_state=PlatformStateSnapshot(
             "RUNNING",
             OperationalState.ACTIVE,
@@ -259,6 +266,7 @@ class RecordingCapabilityRuntime(CapabilityRuntime):
 
 def build_context_tracking_core(
     context_provider: ContextProvider,
+    memory_snapshot_provider: MemorySnapshotProvider | None = None,
 ) -> tuple[
     Core,
     RecordingDecisionEngine,
@@ -280,6 +288,9 @@ def build_context_tracking_core(
         planner=planner,
         capability_runtime=runtime,
         context_provider=context_provider,
+        memory_snapshot_provider=(
+            memory_snapshot_provider or StaticMemorySnapshotProvider()
+        ),
         platform_state=PlatformStateSnapshot(
             "RUNNING",
             OperationalState.ACTIVE,
@@ -314,6 +325,52 @@ def test_core_reuses_one_context_instance_through_planned_invocation() -> None:
     assert decision_engine.inputs[0].context is snapshot
     assert planner.requests[0].context is snapshot
     assert runtime.invocations[0].context is snapshot
+
+
+def test_core_reuses_one_memory_instance_through_decision_and_planning() -> None:
+    memory = MemorySnapshot(NOW, ())
+    memory_provider = StaticMemorySnapshotProvider(memory)
+    core, decision_engine, planner, _, _ = build_context_tracking_core(
+        make_context_provider(),
+        memory_provider,
+    )
+
+    result = core.handle_request(make_request("Plan a system snapshot"))
+
+    assert result.execution_results
+    assert memory_provider.call_count == 1
+    assert decision_engine.inputs[0].memory is memory
+    assert planner.requests[0].memory is memory
+
+
+class FailingMemorySnapshotProvider(MemorySnapshotProvider):
+    """Raise one private structural Working Memory failure."""
+
+    def snapshot(self) -> MemorySnapshot:
+        """Raise before request decision or execution can begin."""
+        raise RuntimeError("private working memory detail")
+
+
+def test_memory_provider_failure_stops_pipeline_with_sanitized_event() -> None:
+    core, decision_engine, planner, runtime, event_bus = (
+        build_context_tracking_core(
+            make_context_provider(),
+            FailingMemorySnapshotProvider(),
+        )
+    )
+    errors: list[ErrorOccurred] = []
+    event_bus.subscribe(ErrorOccurred, errors.append)
+
+    with pytest.raises(RuntimeError, match="private working memory detail"):
+        core.handle_request(make_request())
+
+    assert decision_engine.inputs == []
+    assert planner.requests == []
+    assert runtime.invocations == []
+    assert len(errors) == 1
+    assert errors[0].orchestration_step == "working_memory_snapshot"
+    assert errors[0].error_type == "RuntimeError"
+    assert "private working memory detail" not in repr(errors[0])
 
 
 class FailingContextProvider(ContextProvider):

@@ -60,10 +60,15 @@ The Planner accepts an immutable `PlanningRequest` containing:
 - `goal`: Normalized high-level goal.
 - `constraints`: Explicit immutable planning constraints.
 - `context`: Current context snapshot relevant to planning.
+- `memory`: Stable bounded memory snapshot captured for the request.
 
 The context is the same immutable snapshot captured by Core for the request.
 Planner consumes it as planning input and must not select, refresh, merge, or
 persist context.
+
+The memory snapshot is also the same immutable instance captured by Core.
+Planner does not query or write `MemoryStore`, and Version 0 planning behavior
+does not interpret memory values.
 
 Constraints may limit available capabilities, require confirmation, or express
 a deadline. They must not contain executable callbacks or implementation
@@ -197,11 +202,13 @@ Validation does not grant permissions or reserve resources.
 The Planner depends on:
 
 - The read-only `CapabilityCatalog` abstraction.
-- Immutable request, context, capability metadata, and plan contracts.
+- Immutable request, context, memory-snapshot, capability metadata, and plan
+  contracts.
 - Optionally, the `EventBus` abstraction for domain event publication.
 
-It does not depend on Core, Capability Runtime, System Layer, Memory, or a
-concrete AI provider.
+It does not depend on Core, Capability Runtime, System Layer, `MemoryStore`, or
+a concrete AI provider. It consumes only the immutable `MemorySnapshot` data
+contract.
 
 ---
 
@@ -257,6 +264,7 @@ Tests must cover:
 - Forward and unknown step dependencies.
 - Empty and unsupported goals.
 - Deterministic planning for identical inputs.
+- Identity preservation for the request memory snapshot.
 - Plan and step immutability.
 - Event publication without sensitive arguments.
 - Absence of capability execution.

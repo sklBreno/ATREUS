@@ -59,6 +59,7 @@ The engine accepts an immutable `DecisionInput` containing:
 - `request`: Original normalized request reference and content.
 - `classification`: `ClassifiedRequest` from the Request Classifier.
 - `context`: Current `ContextSnapshot`.
+- `memory`: Stable bounded `MemorySnapshot` captured for the request.
 - `platform_state`: Current lifecycle, operational-state, and
   performance-profile snapshot.
 - `user_policy`: Applicable user preferences, grants, and interruption policy.
@@ -66,11 +67,13 @@ The engine accepts an immutable `DecisionInput` containing:
   capabilities, if any.
 
 The Core assembles this input through module interfaces. The Decision Engine
-does not query those modules directly.
+does not query those modules directly. Version 0 decision policy receives but
+does not interpret memory values.
 
 Inputs must share the request correlation identifier and represent one coherent
-point in the request lifecycle. The context is the single snapshot captured by
-Core for that request. Decision Engine does not query or refresh context.
+point in the request lifecycle. Context and memory are the single snapshots
+captured by Core for that request. Decision Engine does not query, refresh, or
+persist either snapshot.
 
 ---
 
@@ -245,12 +248,13 @@ Core validates and applies approved changes
 The Decision Engine depends on:
 
 - Immutable request, classification, context, system-signal,
-  configuration-policy, platform-state, user-policy, and capability metadata
-  contracts.
+  memory-snapshot, configuration-policy, platform-state, user-policy, and
+  capability metadata contracts.
 - Optionally, the `EventBus` abstraction for domain event publication.
 
 It does not depend directly on Core, Request Classifier, Context Engine,
-Planner, Memory, Capability Runtime, System Layer, or a concrete AI provider.
+Planner, `MemoryStore`, Capability Runtime, System Layer, or a concrete AI
+provider. It consumes only the immutable `MemorySnapshot` data contract.
 
 ---
 

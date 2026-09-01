@@ -47,6 +47,14 @@ class ConfigurationManager(ConfigurationProvider):
             language=cast(str, values["language"]),
             debug=cast(bool, values["debug"]),
             log_level=cast(str, values["log_level"]),
+            working_memory_capacity=cast(
+                int,
+                values["working_memory_capacity"],
+            ),
+            working_memory_entry_ttl_seconds=cast(
+                int,
+                values["working_memory_entry_ttl_seconds"],
+            ),
             start_with_windows=cast(bool, values["start_with_windows"]),
             always_on=cast(bool, values["always_on"]),
         )

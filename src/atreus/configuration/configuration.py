@@ -20,6 +20,8 @@ class Configuration:
     # Runtime behavior
     debug: bool = True
     log_level: str = "INFO"
+    working_memory_capacity: int = 64
+    working_memory_entry_ttl_seconds: int = 1800
 
     # System behavior
     start_with_windows: bool = True

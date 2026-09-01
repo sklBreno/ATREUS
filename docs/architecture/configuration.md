@@ -218,7 +218,8 @@ configuration.start_with_windows
 configuration.always_on
 configuration.permission_grants
 configuration.context_stabilization_policy
-configuration.working_memory_policy
+configuration.working_memory_capacity
+configuration.working_memory_entry_ttl_seconds
 configuration.planning_policy
 configuration.execution_policy
 ```
@@ -246,17 +247,22 @@ no interactive permission-grant system.
 
 # Configurable Numeric Policies
 
-The Configuration object supplies validated immutable policy objects for:
+The Configuration object supplies validated immutable values used to compose
+policy objects for:
 
 - Context transition stabilization.
 - Working Memory capacity and expiration behavior.
 - Planning bounds.
 - Capability execution timeout defaults.
 
-This architecture intentionally defines no concrete numeric values. Defaults
-must be owned by future implementation configuration, validated before use, and
-injected into the responsible module. Modules must not hardcode values that
-belong to these policies.
+Working Memory V0 defines validated defaults of 64 entries and 1800 seconds per
+entry. `ATREUS_WORKING_MEMORY_CAPACITY` and
+`ATREUS_WORKING_MEMORY_ENTRY_TTL_SECONDS` may override those defaults through
+the existing source priority. Both values must be positive integers.
+
+Other numeric defaults remain owned by their future implementation
+configuration, validated before use, and injected into the responsible module.
+Modules must not hardcode values that belong to these policies.
 
 ---
 
@@ -352,6 +358,8 @@ The module must be tested to ensure:
 - Correct loading and validation of permission grants.
 - Correct validation and exposure of numeric policy objects without hardcoded
   architecture values.
+- Correct Working Memory defaults, positive-value validation, and source
+  priority for capacity and entry TTL.
 - Exclusion of secrets from Configuration objects, snapshots, representations,
   events, errors, and logs.
 - Consistent configuration availability across the platform.

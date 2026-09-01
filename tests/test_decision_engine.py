@@ -28,6 +28,7 @@ from atreus.decision.models import (
     UserPolicy,
 )
 from atreus.events.event_bus import InProcessEventBus
+from atreus.memory.models import MemorySnapshot
 from atreus.request_classifier.models import ClassifiedRequest, RequestType
 from atreus.shared.platform import (
     OperationalState,
@@ -88,6 +89,7 @@ def make_input(
             NOW,
             ContextSignalStatus.AVAILABLE,
         ),
+        memory=MemorySnapshot(NOW, ()),
         platform_state=PlatformStateSnapshot(
             "RUNNING",
             operational_state,
@@ -309,6 +311,7 @@ def test_inconsistent_request_identity_raises_explicit_error() -> None:
         request=decision_input.request,
         classification=ClassifiedRequest(uuid4(), RequestType.COMMAND, 0.9),
         context=decision_input.context,
+        memory=decision_input.memory,
         platform_state=decision_input.platform_state,
         user_policy=decision_input.user_policy,
         candidate_capabilities=decision_input.candidate_capabilities,

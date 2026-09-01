@@ -7,7 +7,7 @@ from atreus.configuration.loader import ConfigurationLoader
 from atreus.configuration.validator import ConfigurationValidator
 
 
-def _valid_values() -> dict[str, str | bool]:
+def _valid_values() -> dict[str, str | bool | int]:
     return ConfigurationLoader(env_file_path=None, environment={}).load()
 
 
@@ -25,6 +25,9 @@ def test_validator_accepts_valid_configuration() -> None:
         ("start_with_windows", 1),
         ("always_on", None),
         ("log_level", "TRACE"),
+        ("working_memory_capacity", 0),
+        ("working_memory_entry_ttl_seconds", -1),
+        ("working_memory_capacity", True),
     ),
 )
 def test_validator_rejects_invalid_values(

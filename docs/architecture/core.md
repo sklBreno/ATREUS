@@ -235,7 +235,11 @@ for the request. It reuses that same instance in `DecisionInput`,
 Core does not retain the snapshot after request orchestration completes, and no
 downstream module refreshes it during that request.
 
-Working Memory is used only when a request requires bounded temporary state.
+Core also captures exactly one immutable `MemorySnapshot` for every request.
+It reuses that same instance in `DecisionInput` and `PlanningRequest` when
+planning occurs. Capability invocations and Capability Runtime do not receive
+memory. Core reads only the snapshot boundary and does not store entries,
+select memory facts, or retain the snapshot after request orchestration.
 
 ---
 
@@ -294,7 +298,7 @@ Core communicates through interfaces with:
 
 - Configuration Provider.
 - Event Bus.
-- Working Memory Store.
+- Working Memory Snapshot Provider.
 - System Layer services.
 - AI Provider.
 - Capability Registry and Capability Catalog.
@@ -357,9 +361,9 @@ It coordinates profile changes but does not implement module-specific throttling
 Modules consume the active profile and apply their documented behavior.
 
 Numeric thresholds for state transitions, performance adaptation, context
-stabilization, planning, Working Memory, and execution deadlines are not defined
-here. Future implementations receive configurable defaults through validated
-configuration.
+stabilization, planning, and execution deadlines are not defined here. Working
+Memory V0 receives validated defaults of 64 entries and 1800 seconds per entry
+through Configuration; both values remain overridable before bootstrap.
 
 ---
 
@@ -374,6 +378,9 @@ Core tests must cover:
 - Performance-profile propagation.
 - `ContextChanged` consumption without duplicate publication.
 - Permission-grant propagation without expansion.
+- Exactly one Working Memory snapshot per request and identity preservation
+  through decision and planning.
+- Working Memory snapshot failure before downstream decision or execution.
 - AI Provider unavailable behavior.
 - Module failure isolation.
 - Core-owned event publication.
