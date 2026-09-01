@@ -2,6 +2,9 @@
 
 from dataclasses import dataclass
 
+OPEN_APPLICATION_CAPABILITY_ID = "application.open"
+APPLICATION_ID_ARGUMENT = "application_id"
+
 type CapabilityScalar = str | int | float | bool | None
 
 

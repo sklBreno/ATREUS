@@ -2,6 +2,7 @@
 
 from uuid import UUID
 
+from atreus.capability.contracts import OPEN_APPLICATION_CAPABILITY_ID
 from atreus.capability.models import (
     CapabilityAvailabilityState,
     CapabilityMetadata,
@@ -190,7 +191,12 @@ class DeterministicDecisionEngine(DecisionEngine):
             )
 
         if request_type is RequestType.COMMAND:
-            return self._decide_command(request_id, unblocked, permitted)
+            return self._decide_command(
+                request_id,
+                decision_input.request.content,
+                unblocked,
+                permitted,
+            )
         if request_type in (RequestType.INTENTION, RequestType.TASK):
             if permitted:
                 return Decision(
@@ -224,6 +230,7 @@ class DeterministicDecisionEngine(DecisionEngine):
     @staticmethod
     def _decide_command(
         request_id: UUID,
+        request_content: str,
         unblocked: tuple[CapabilityMetadata, ...],
         permitted: tuple[CapabilityMetadata, ...],
     ) -> Decision:
@@ -238,6 +245,17 @@ class DeterministicDecisionEngine(DecisionEngine):
                 DecisionOutcome.ASK_FOR_CONFIRMATION,
                 None,
                 "multiple_capability_targets",
+            )
+        if (
+            permitted[0].identifier == OPEN_APPLICATION_CAPABILITY_ID
+            and DeterministicDecisionEngine._normalize_request(request_content)
+            == "open calculator"
+        ):
+            return Decision(
+                request_id,
+                DecisionOutcome.REQUEST_PLANNING,
+                OPEN_APPLICATION_CAPABILITY_ID,
+                "command_requires_explicit_plan",
             )
         return Decision(
             request_id,
@@ -277,11 +295,24 @@ class DeterministicDecisionEngine(DecisionEngine):
         candidates: tuple[CapabilityMetadata, ...],
     ) -> tuple[CapabilityMetadata, ...]:
         content_tokens = request_content.casefold().split()
+        normalized_request = DeterministicDecisionEngine._normalize_request(
+            request_content
+        )
+        resolved_target = (
+            OPEN_APPLICATION_CAPABILITY_ID
+            if normalized_request == "open calculator"
+            else None
+        )
         return tuple(
             metadata
             for metadata in candidates
             if metadata.identifier.casefold() in content_tokens
+            or metadata.identifier == resolved_target
         )
+
+    @staticmethod
+    def _normalize_request(request_content: str) -> str:
+        return " ".join(request_content.casefold().split()).strip(" .!?")
 
     @staticmethod
     def _validate_decision_input(decision_input: DecisionInput) -> None:

@@ -8,6 +8,7 @@ from atreus.ai.models import (
     AIProviderAvailability,
     AIProviderAvailabilityState,
 )
+from atreus.capability.open_application import OpenApplicationCapability
 from atreus.capability.registry import InMemoryCapabilityRegistry
 from atreus.capability.system_snapshot import SystemSnapshotCapability
 from atreus.context.models import (
@@ -35,6 +36,7 @@ from atreus.execution.models import (
     CapabilityExecutionStatus,
 )
 from atreus.execution.runtime import InProcessCapabilityRuntime
+from atreus.interfaces.application_controller import ApplicationController
 from atreus.interfaces.planner import Planner
 from atreus.interfaces.request_classifier import RequestClassifier
 from atreus.interfaces.system_information import SystemInformationProvider
@@ -64,6 +66,7 @@ from atreus.system.system_information import UnavailableSystemInformationProvide
 from tests.support import (
     NOW,
     FixedClock,
+    RecordingApplicationController,
     StaticAIAvailabilityProvider,
     StaticContextProvider,
 )
@@ -93,6 +96,7 @@ def build_core(
     planner: Planner | None = None,
     require_confirmation: bool = False,
     system_information: SystemInformationProvider | None = None,
+    application_controller: ApplicationController | None = None,
     user_policy: UserPolicy | None = None,
 ) -> tuple[Core, InProcessEventBus]:
     """Compose the complete controlled Phase B pipeline for tests."""
@@ -100,9 +104,17 @@ def build_core(
     clock = FixedClock()
     context_provider = make_context_provider()
     registry = InMemoryCapabilityRegistry(event_bus)
-    system_provider = system_information or UnavailableSystemInformationProvider(
-        clock
-    )
+    if application_controller is None:
+        system_provider = (
+            system_information or UnavailableSystemInformationProvider(clock)
+        )
+        capabilities = (SystemSnapshotCapability(system_provider),)
+        default_permission_grants = ("system.metrics.read",)
+        allowed_capability_ids = ("system.snapshot",)
+    else:
+        capabilities = (OpenApplicationCapability(application_controller),)
+        default_permission_grants = ("application.control",)
+        allowed_capability_ids = ("application.open",)
     runtime = InProcessCapabilityRuntime(
         registry,
         context_provider,
@@ -113,7 +125,7 @@ def build_core(
         clock,
         event_bus,
     )
-    runtime.load((SystemSnapshotCapability(system_provider),))
+    runtime.load(capabilities)
     core = Core(
         event_bus=event_bus,
         request_classifier=(
@@ -137,14 +149,14 @@ def build_core(
         user_policy=(
             user_policy
             or UserPolicy(
-                permission_grants=("system.metrics.read",),
+                permission_grants=default_permission_grants,
                 blocked_capability_ids=(),
                 allow_interruption=True,
                 allow_delegation=False,
             )
         ),
         planning_constraints=PlanningConstraints(
-            allowed_capability_ids=("system.snapshot",),
+            allowed_capability_ids=allowed_capability_ids,
             blocked_capability_ids=(),
             maximum_steps=1,
             deadline=None,
@@ -202,6 +214,43 @@ def test_core_does_not_execute_unrelated_command() -> None:
     assert result.decision.outcome is DecisionOutcome.ASK_FOR_CONFIRMATION
     assert result.decision.target is None
     assert result.execution_results == ()
+
+
+def test_core_opens_calculator_through_complete_controlled_pipeline() -> None:
+    controller = RecordingApplicationController(process_id=2468)
+    core, _ = build_core(application_controller=controller)
+
+    result = core.handle_request(make_request("open calculator"))
+
+    assert result.classification.request_type is RequestType.COMMAND
+    assert result.decision.outcome is DecisionOutcome.REQUEST_PLANNING
+    assert result.decision.target == "application.open"
+    assert result.plan is not None
+    assert len(result.plan.steps) == 1
+    assert result.plan.steps[0].capability_id == "application.open"
+    assert tuple(
+        (argument.name, argument.value)
+        for argument in result.plan.steps[0].arguments
+    ) == (("application_id", "calculator"),)
+    assert len(result.execution_results) == 1
+    assert result.execution_results[0].status is CapabilityExecutionStatus.SUCCEEDED
+    assert len(controller.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "content",
+    ("open spotify", "shutdown computer", "arbitrary text"),
+)
+def test_core_rejects_unrelated_desktop_commands(content: str) -> None:
+    controller = RecordingApplicationController()
+    core, _ = build_core(application_controller=controller)
+
+    result = core.handle_request(make_request(content))
+
+    assert result.decision.outcome is DecisionOutcome.ASK_FOR_CONFIRMATION
+    assert result.plan is None
+    assert result.execution_results == ()
+    assert controller.calls == []
 
 
 @pytest.mark.parametrize(

@@ -2,6 +2,12 @@
 
 from datetime import UTC
 
+from atreus.capability.contracts import (
+    APPLICATION_ID_ARGUMENT,
+    OPEN_APPLICATION_CAPABILITY_ID,
+    CapabilityArgument,
+    CapabilityArguments,
+)
 from atreus.capability.models import (
     CapabilityAvailabilityState,
     CapabilityMetadata,
@@ -59,7 +65,10 @@ class DeterministicPlanner(Planner):
             InvalidCapabilityReferenceError: If selected metadata is unusable.
         """
         self._validate_request(request)
-        selected_ids = self._select_capability_ids(request.constraints)
+        selected_ids = self._select_capability_ids(
+            request.goal,
+            request.constraints,
+        )
         ordered_metadata = self._resolve_capabilities(
             selected_ids,
             request.constraints,
@@ -77,7 +86,10 @@ class DeterministicPlanner(Planner):
             PlanStep(
                 step_id=step_ids[metadata.identifier],
                 capability_id=metadata.identifier,
-                arguments=(),
+                arguments=self._capability_arguments(
+                    request.goal,
+                    metadata.identifier,
+                ),
                 depends_on=tuple(
                     step_ids[dependency]
                     for dependency in metadata.dependencies
@@ -108,8 +120,16 @@ class DeterministicPlanner(Planner):
 
     def _select_capability_ids(
         self,
+        goal: str,
         constraints: PlanningConstraints,
     ) -> tuple[str, ...]:
+        if self._normalize_goal(goal) == "open calculator":
+            allowed = constraints.allowed_capability_ids
+            if allowed is not None and OPEN_APPLICATION_CAPABILITY_ID not in allowed:
+                raise GoalNotPlannableError(
+                    "Application opening is outside the planning allowlist."
+                )
+            return (OPEN_APPLICATION_CAPABILITY_ID,)
         if constraints.allowed_capability_ids is not None:
             if not constraints.allowed_capability_ids:
                 raise GoalNotPlannableError(
@@ -128,6 +148,22 @@ class DeterministicPlanner(Planner):
                 "Planning requires one unambiguous capability or an allowlist."
             )
         return unblocked
+
+    @staticmethod
+    def _capability_arguments(
+        goal: str,
+        capability_id: str,
+    ) -> CapabilityArguments:
+        if (
+            capability_id == OPEN_APPLICATION_CAPABILITY_ID
+            and DeterministicPlanner._normalize_goal(goal) == "open calculator"
+        ):
+            return (CapabilityArgument(APPLICATION_ID_ARGUMENT, "calculator"),)
+        return ()
+
+    @staticmethod
+    def _normalize_goal(goal: str) -> str:
+        return " ".join(goal.casefold().split()).strip(" .!?")
 
     def _resolve_capabilities(
         self,

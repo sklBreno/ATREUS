@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 
+from atreus.capability.contracts import CapabilityArgument
 from atreus.capability.models import (
     CapabilityAvailability,
     CapabilityAvailabilityState,
@@ -115,6 +116,45 @@ def test_single_available_capability_creates_one_step_plan() -> None:
         "system.snapshot",
     )
     assert plan.steps[0].arguments == ()
+
+
+def test_open_calculator_plan_contains_allowlisted_application_argument() -> None:
+    registry = InMemoryCapabilityRegistry()
+    registry.register(
+        make_metadata(
+            "application.open",
+            permissions=("application.control",),
+        )
+    )
+    registry.register(make_metadata("system.snapshot"))
+
+    plan = make_planner(registry).create_plan(
+        make_request(
+            goal="open calculator",
+            allowed=("application.open", "system.snapshot"),
+            maximum_steps=1,
+        )
+    )
+
+    assert len(plan.steps) == 1
+    assert plan.steps[0].capability_id == "application.open"
+    assert plan.steps[0].arguments == (
+        CapabilityArgument("application_id", "calculator"),
+    )
+    assert plan.required_permissions == ("application.control",)
+
+
+def test_open_calculator_fails_outside_planning_allowlist() -> None:
+    registry = InMemoryCapabilityRegistry()
+    registry.register(make_metadata("application.open"))
+
+    with pytest.raises(GoalNotPlannableError):
+        make_planner(registry).create_plan(
+            make_request(
+                goal="open calculator",
+                allowed=("system.snapshot",),
+            )
+        )
 
 
 def test_dependency_is_ordered_before_dependent_step() -> None:

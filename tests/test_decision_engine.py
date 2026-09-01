@@ -143,6 +143,47 @@ def test_unrelated_command_does_not_select_sole_available_capability() -> None:
     assert decision.reason_code == "capability_target_not_established"
 
 
+def test_open_calculator_resolves_to_controlled_planning_target() -> None:
+    decision = make_engine().decide(
+        make_input(
+            content="open calculator",
+            candidates=(
+                make_metadata(
+                    "application.open",
+                    permissions=("application.control",),
+                ),
+            ),
+            permission_grants=("application.control",),
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.REQUEST_PLANNING
+    assert decision.target == "application.open"
+    assert decision.reason_code == "command_requires_explicit_plan"
+
+
+@pytest.mark.parametrize(
+    "content",
+    ("open spotify", "shutdown computer", "arbitrary text"),
+)
+def test_unrelated_commands_do_not_target_open_application(content: str) -> None:
+    decision = make_engine().decide(
+        make_input(
+            content=content,
+            candidates=(
+                make_metadata(
+                    "application.open",
+                    permissions=("application.control",),
+                ),
+            ),
+            permission_grants=("application.control",),
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.ASK_FOR_CONFIRMATION
+    assert decision.target is None
+
+
 def test_low_confidence_requires_confirmation() -> None:
     decision = make_engine().decide(make_input(confidence=0.25))
 
