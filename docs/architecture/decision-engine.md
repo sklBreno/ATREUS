@@ -69,7 +69,8 @@ The Core assembles this input through module interfaces. The Decision Engine
 does not query those modules directly.
 
 Inputs must share the request correlation identifier and represent one coherent
-point in the request lifecycle.
+point in the request lifecycle. The context is the single snapshot captured by
+Core for that request. Decision Engine does not query or refresh context.
 
 ---
 

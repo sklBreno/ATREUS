@@ -86,7 +86,7 @@ def make_input(
             0.9,
             NOW,
             NOW,
-            ContextSignalStatus.COMPLETE,
+            ContextSignalStatus.AVAILABLE,
         ),
         platform_state=PlatformStateSnapshot(
             "RUNNING",

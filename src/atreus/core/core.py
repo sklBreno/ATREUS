@@ -2,6 +2,7 @@
 
 from uuid import UUID, uuid4
 
+from atreus.context.models import ContextSnapshot
 from atreus.core.exceptions import (
     InconsistentClassificationError,
     InconsistentDecisionError,
@@ -128,7 +129,9 @@ class Core:
             execution_results: tuple[CapabilityExecutionResult, ...] = ()
             if decision.outcome is DecisionOutcome.EXECUTE:
                 orchestration_step = "direct_execution"
-                execution_results = (self._execute_direct(request, decision),)
+                execution_results = (
+                    self._execute_direct(request, decision, context),
+                )
             elif decision.outcome is DecisionOutcome.REQUEST_PLANNING:
                 orchestration_step = "planning"
                 planning_id = uuid4()
@@ -152,7 +155,7 @@ class Core:
                     step.requires_confirmation for step in plan.steps
                 ):
                     orchestration_step = "plan_execution"
-                    execution_results = self._execute_plan(plan)
+                    execution_results = self._execute_plan(plan, context)
         except Exception as error:
             self._publish_error(
                 request.request_id,
@@ -175,6 +178,7 @@ class Core:
         self,
         request: Request,
         decision: Decision,
+        context: ContextSnapshot,
     ) -> CapabilityExecutionResult:
         if decision.target is None:
             raise InconsistentDecisionError(
@@ -188,6 +192,7 @@ class Core:
                 step_id=None,
                 capability_id=decision.target,
                 arguments=(),
+                context=context,
                 timeout_seconds=self._execution_timeout_seconds,
                 permission_grants=self._user_policy.permission_grants,
             )
@@ -196,6 +201,7 @@ class Core:
     def _execute_plan(
         self,
         plan: Plan,
+        context: ContextSnapshot,
     ) -> tuple[CapabilityExecutionResult, ...]:
         results: list[CapabilityExecutionResult] = []
         successful_steps: set[str] = set()
@@ -212,6 +218,7 @@ class Core:
                     step_id=step.step_id,
                     capability_id=step.capability_id,
                     arguments=step.arguments,
+                    context=context,
                     timeout_seconds=self._execution_timeout_seconds,
                     permission_grants=self._user_policy.permission_grants,
                 )

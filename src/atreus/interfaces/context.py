@@ -6,7 +6,7 @@ from atreus.context.models import ContextSnapshot
 
 
 class ContextProvider(ABC):
-    """Provide the latest immutable context snapshot."""
+    """Provide the latest normalized immutable context snapshot."""
 
     @abstractmethod
     def current_context(self) -> ContextSnapshot:

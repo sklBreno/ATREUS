@@ -4,7 +4,7 @@
 
 **Date:** 2026-07-02
 
-**Last Updated:** 2026-08-17
+**Last Updated:** 2026-09-01
 
 ---
 
@@ -39,6 +39,19 @@ Version 1 context types are:
 
 `UNKNOWN` represents insufficient reliable context. It is not equivalent to
 `IDLE`.
+
+Context is ephemeral situational state. Historical activity, learned
+preferences, and retained experience belong to Memory. Runtime Host lifecycle,
+operational state, and performance profile remain independent from context.
+
+Version 0 establishes only the immutable context snapshot and coherent request
+propagation. Without approved evidence, production returns `UNKNOWN` with
+confidence `0.0` and unavailable signal status. It does not guess or implement
+signal aggregation, stabilization, or context events.
+
+Core captures one snapshot per request and reuses the same instance for
+decision, planning, capability invocation, and execution. Capability Runtime
+does not query Context Engine or `ContextProvider`.
 
 ---
 

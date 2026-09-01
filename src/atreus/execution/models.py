@@ -30,6 +30,7 @@ class CapabilityInvocation:
     step_id: str | None
     capability_id: str
     arguments: CapabilityArguments
+    context: ContextSnapshot
     timeout_seconds: float | None
     permission_grants: tuple[str, ...]
 

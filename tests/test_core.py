@@ -24,19 +24,29 @@ from atreus.core.exceptions import (
 from atreus.core.models import ErrorOccurred, RequestCompleted, RequestReceived
 from atreus.decision.decision_engine import DeterministicDecisionEngine
 from atreus.decision.models import (
+    Decision,
+    DecisionInput,
     DecisionMade,
     DecisionOutcome,
     DecisionPolicy,
+    PlatformBehaviorDecision,
+    PlatformBehaviorDecisionInput,
     UserPolicy,
 )
 from atreus.events.event_bus import InProcessEventBus
 from atreus.execution.models import (
     CapabilityExecutionCompleted,
+    CapabilityExecutionResult,
     CapabilityExecutionStarted,
     CapabilityExecutionStatus,
+    CapabilityInvocation,
 )
 from atreus.execution.runtime import InProcessCapabilityRuntime
 from atreus.interfaces.application_controller import ApplicationController
+from atreus.interfaces.capability import Capability
+from atreus.interfaces.capability_runtime import CapabilityRuntime
+from atreus.interfaces.context import ContextProvider
+from atreus.interfaces.decision_engine import DecisionEngine
 from atreus.interfaces.planner import Planner
 from atreus.interfaces.request_classifier import RequestClassifier
 from atreus.interfaces.system_information import SystemInformationProvider
@@ -85,7 +95,7 @@ def make_context_provider() -> StaticContextProvider:
             0.9,
             NOW,
             NOW,
-            ContextSignalStatus.COMPLETE,
+            ContextSignalStatus.AVAILABLE,
         )
     )
 
@@ -98,11 +108,12 @@ def build_core(
     system_information: SystemInformationProvider | None = None,
     application_controller: ApplicationController | None = None,
     user_policy: UserPolicy | None = None,
+    context_provider: ContextProvider | None = None,
 ) -> tuple[Core, InProcessEventBus]:
     """Compose the complete controlled Phase B pipeline for tests."""
     event_bus = InProcessEventBus()
     clock = FixedClock()
-    context_provider = make_context_provider()
+    selected_context_provider = context_provider or make_context_provider()
     registry = InMemoryCapabilityRegistry(event_bus)
     if application_controller is None:
         system_provider = (
@@ -117,7 +128,6 @@ def build_core(
         allowed_capability_ids = ("application.open",)
     runtime = InProcessCapabilityRuntime(
         registry,
-        context_provider,
         StaticAIAvailabilityProvider(
             AIProviderAvailability(AIProviderAvailabilityState.UNAVAILABLE)
         ),
@@ -138,7 +148,7 @@ def build_core(
         ),
         planner=planner or DeterministicPlanner(registry, clock, event_bus),
         capability_runtime=runtime,
-        context_provider=context_provider,
+        context_provider=selected_context_provider,
         platform_state=PlatformStateSnapshot(
             "RUNNING",
             OperationalState.ACTIVE,
@@ -165,6 +175,203 @@ def build_core(
         execution_timeout_seconds=None,
     )
     return core, event_bus
+
+
+class RecordingDecisionEngine(DecisionEngine):
+    """Record request decision inputs and request deterministic planning."""
+
+    def __init__(self) -> None:
+        """Initialize an empty input collection."""
+        self.inputs: list[DecisionInput] = []
+
+    def decide(self, decision_input: DecisionInput) -> Decision:
+        """Record the input and request one planned execution."""
+        self.inputs.append(decision_input)
+        return Decision(
+            decision_input.request.request_id,
+            DecisionOutcome.REQUEST_PLANNING,
+            "system.snapshot",
+            "context_identity_test",
+        )
+
+    def decide_platform_behavior(
+        self,
+        decision_input: PlatformBehaviorDecisionInput,
+    ) -> PlatformBehaviorDecision:
+        """Reject platform evaluation outside this test boundary."""
+        raise AssertionError("Platform behavior evaluation is not expected.")
+
+
+class RecordingPlanner(Planner):
+    """Record planning requests and return one deterministic step."""
+
+    def __init__(self) -> None:
+        """Initialize an empty request collection."""
+        self.requests: list[PlanningRequest] = []
+
+    def create_plan(self, request: PlanningRequest) -> Plan:
+        """Record and return one correlated plan."""
+        self.requests.append(request)
+        return Plan(
+            plan_id=request.planning_id,
+            request_id=request.request_id,
+            goal=request.goal,
+            steps=(
+                PlanStep(
+                    step_id="step-1",
+                    capability_id="system.snapshot",
+                    arguments=(),
+                    depends_on=(),
+                    requires_confirmation=False,
+                ),
+            ),
+            required_permissions=(),
+            requires_confirmation=False,
+        )
+
+
+class RecordingCapabilityRuntime(CapabilityRuntime):
+    """Record invocations without performing capability work."""
+
+    def __init__(self) -> None:
+        """Initialize an empty invocation collection."""
+        self.invocations: list[CapabilityInvocation] = []
+
+    def load(self, capabilities: tuple[Capability, ...]) -> None:
+        """Accept no loading work for this orchestration double."""
+
+    def invoke(
+        self,
+        invocation: CapabilityInvocation,
+    ) -> CapabilityExecutionResult:
+        """Record and return one successful terminal result."""
+        self.invocations.append(invocation)
+        return CapabilityExecutionResult(
+            invocation_id=invocation.invocation_id,
+            capability_id=invocation.capability_id,
+            status=CapabilityExecutionStatus.SUCCEEDED,
+            output=(),
+            error_code=None,
+            started_at=NOW,
+            completed_at=NOW,
+        )
+
+
+def build_context_tracking_core(
+    context_provider: ContextProvider,
+) -> tuple[
+    Core,
+    RecordingDecisionEngine,
+    RecordingPlanner,
+    RecordingCapabilityRuntime,
+    InProcessEventBus,
+]:
+    """Compose a Core with recording context-consumer boundaries."""
+    event_bus = InProcessEventBus()
+    registry = InMemoryCapabilityRegistry(event_bus)
+    decision_engine = RecordingDecisionEngine()
+    planner = RecordingPlanner()
+    runtime = RecordingCapabilityRuntime()
+    core = Core(
+        event_bus=event_bus,
+        request_classifier=DeterministicRequestClassifier(event_bus),
+        capability_catalog=registry,
+        decision_engine=decision_engine,
+        planner=planner,
+        capability_runtime=runtime,
+        context_provider=context_provider,
+        platform_state=PlatformStateSnapshot(
+            "RUNNING",
+            OperationalState.ACTIVE,
+            PerformanceProfile.BALANCED,
+            NOW,
+            NOW,
+        ),
+        user_policy=UserPolicy((), (), True, False),
+        planning_constraints=PlanningConstraints(None, (), 1, None, False),
+        execution_timeout_seconds=None,
+    )
+    return core, decision_engine, planner, runtime, event_bus
+
+
+def test_core_reuses_one_context_instance_through_planned_invocation() -> None:
+    snapshot = ContextSnapshot(
+        ContextType.WORKING,
+        0.9,
+        NOW,
+        NOW,
+        ContextSignalStatus.AVAILABLE,
+    )
+    context_provider = StaticContextProvider(snapshot)
+    core, decision_engine, planner, runtime, _ = build_context_tracking_core(
+        context_provider
+    )
+
+    result = core.handle_request(make_request("Plan a system snapshot"))
+
+    assert result.execution_results
+    assert context_provider.call_count == 1
+    assert decision_engine.inputs[0].context is snapshot
+    assert planner.requests[0].context is snapshot
+    assert runtime.invocations[0].context is snapshot
+
+
+class FailingContextProvider(ContextProvider):
+    """Raise one private structural context failure."""
+
+    def current_context(self) -> ContextSnapshot:
+        """Raise before request decision or execution can begin."""
+        raise RuntimeError("private context provider detail")
+
+
+def test_context_provider_failure_stops_pipeline_with_sanitized_event() -> None:
+    core, decision_engine, planner, runtime, event_bus = (
+        build_context_tracking_core(FailingContextProvider())
+    )
+    errors: list[ErrorOccurred] = []
+    event_bus.subscribe(ErrorOccurred, errors.append)
+
+    with pytest.raises(RuntimeError, match="private context provider detail"):
+        core.handle_request(make_request())
+
+    assert decision_engine.inputs == []
+    assert planner.requests == []
+    assert runtime.invocations == []
+    assert len(errors) == 1
+    assert errors[0].orchestration_step == "context_snapshot"
+    assert errors[0].error_type == "RuntimeError"
+    assert "private context provider detail" not in repr(errors[0])
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    (
+        ContextSnapshot(
+            ContextType.UNKNOWN,
+            0.0,
+            NOW,
+            NOW,
+            ContextSignalStatus.UNAVAILABLE,
+        ),
+        ContextSnapshot(
+            ContextType.WORKING,
+            0.5,
+            NOW,
+            NOW,
+            ContextSignalStatus.DEGRADED,
+        ),
+    ),
+)
+def test_non_available_context_does_not_block_current_execution(
+    snapshot: ContextSnapshot,
+) -> None:
+    context_provider = StaticContextProvider(snapshot)
+    core, _ = build_core(context_provider=context_provider)
+
+    result = core.handle_request(make_request())
+
+    assert result.execution_results[0].status is CapabilityExecutionStatus.SUCCEEDED
+    assert context_provider.call_count == 1
 
 
 def test_core_executes_direct_decision_only_through_runtime() -> None:

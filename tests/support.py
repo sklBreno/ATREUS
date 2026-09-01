@@ -45,9 +45,11 @@ class StaticContextProvider(ContextProvider):
     def __init__(self, snapshot: ContextSnapshot) -> None:
         """Initialize the current context snapshot."""
         self._snapshot = snapshot
+        self.call_count = 0
 
     def current_context(self) -> ContextSnapshot:
         """Return the configured snapshot."""
+        self.call_count += 1
         return self._snapshot
 
 

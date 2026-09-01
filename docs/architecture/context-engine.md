@@ -2,9 +2,9 @@
 
 **Status:** Draft
 
-**Version:** 1.0
+**Version:** 1.1
 
-**Last Updated:** 2026-08-31
+**Last Updated:** 2026-09-01
 
 ---
 
@@ -15,6 +15,28 @@ The Context Engine detects and maintains the user's current computing context.
 Context is a first-class platform concept established by ADR-003. The engine
 turns approved system signals into a stable, immutable context snapshot that
 other modules can use when making decisions.
+
+Context is ephemeral situational state. It does not contain historical
+activity, learned preferences, or retained experience; those concerns belong
+to Memory. Runtime Host lifecycle, operational state, and performance profile
+are independent contracts and must not be represented as user context.
+
+---
+
+# Version 0 Scope
+
+Version 0 establishes the immutable context contract and coherent request
+propagation without implementing context inference.
+
+Production uses an unavailable provider that returns `UNKNOWN`, confidence
+`0.0`, and `UNAVAILABLE`. It does not infer a context when no approved evidence
+exists. Signal providers, aggregation, transition stabilization, and context
+events remain Version 1 work.
+
+For each request, Core captures exactly one `ContextSnapshot`. The same
+instance is supplied to Decision Engine, Planner, `CapabilityInvocation`, and
+Capability Runtime's `ExecutionContext`. Capability Runtime never queries a
+`ContextProvider` or refreshes context during an invocation.
 
 ---
 
@@ -103,10 +125,14 @@ The engine exposes an immutable `ContextSnapshot` containing:
 - `confidence`: Numeric value from `0.0` to `1.0`.
 - `started_at`: UTC timestamp of the current context transition.
 - `evaluated_at`: UTC timestamp of the latest evaluation.
-- `signal_status`: Whether required signal coverage is `COMPLETE`, `DEGRADED`,
+- `signal_status`: Whether required signal coverage is `AVAILABLE`, `DEGRADED`,
   or `UNAVAILABLE`.
 
 Raw signal values are not included in the public snapshot.
+
+Version 0 snapshots enforce confidence boundaries, timezone-aware timestamps,
+chronological ordering, and the invariant that `UNAVAILABLE` requires
+`UNKNOWN` with confidence `0.0`.
 
 ---
 
@@ -129,6 +155,10 @@ class ContextEngine(ContextProvider, ABC):
 Consumers that only need current context depend on `ContextProvider`. Bootstrap
 and orchestration code may depend on the broader `ContextEngine` lifecycle
 contract.
+
+Version 0 composes only `ContextProvider`. A broader `ContextEngine` contract
+must not be implemented until approved signal providers and deterministic
+evaluation rules exist.
 
 ---
 
@@ -230,7 +260,7 @@ Fields:
 
 ## `ContextSignalAvailabilityChanged`
 
-Published when required signal coverage changes between `COMPLETE`, `DEGRADED`,
+Published when required signal coverage changes between `AVAILABLE`, `DEGRADED`,
 and `UNAVAILABLE`.
 
 Fields:
@@ -241,6 +271,10 @@ Fields:
 - Provider identifiers affected.
 
 Neither event contains raw user activity or application history.
+
+Version 0 publishes neither event because it performs no signal evaluation or
+semantic context transition. Structural provider failures use the existing
+sanitized Core orchestration error path.
 
 The Context Engine subscribes to these System Layer events when their providers
 are enabled:
@@ -271,9 +305,18 @@ status rather than guessing.
 
 Tests must cover:
 
+- Version 0 snapshot invariants and immutability.
+- Stable unavailable-context start time and clock-based evaluation time.
+- Exactly one context capture per request.
+- Identity preservation through decision, planning, invocation, and execution.
+- Provider failure before decision or execution without private-detail events.
+- Absence of operating-system dependencies from the context domain.
+
+Version 1 tests must additionally cover:
+
 - Every Version 1 context type.
 - Startup with no signals.
-- Complete, degraded, and unavailable signal coverage.
+- Available, degraded, and unavailable signal coverage.
 - Confidence boundaries.
 - Transition stabilization.
 - Prevention of context flapping.

@@ -5,6 +5,7 @@ from datetime import datetime
 from atreus.ai.models import AIProviderAvailabilityState
 from atreus.capability.contracts import CapabilityArgument, CapabilityOutputItem
 from atreus.capability.models import CapabilityAvailabilityState
+from atreus.context.models import ContextSnapshot
 from atreus.execution.exceptions import (
     CapabilityAIUnavailableError,
     DuplicateCapabilityImplementationError,
@@ -30,7 +31,6 @@ from atreus.interfaces.capability import Capability
 from atreus.interfaces.capability_registry import CapabilityRegistry
 from atreus.interfaces.capability_runtime import CapabilityRuntime
 from atreus.interfaces.clock import Clock
-from atreus.interfaces.context import ContextProvider
 from atreus.interfaces.event_bus import EventBus
 
 
@@ -40,7 +40,6 @@ class InProcessCapabilityRuntime(CapabilityRuntime):
     def __init__(
         self,
         registry: CapabilityRegistry,
-        context_provider: ContextProvider,
         ai_availability_provider: AIAvailabilityProvider,
         cancellation: CancellationSignal,
         clock: Clock,
@@ -50,14 +49,12 @@ class InProcessCapabilityRuntime(CapabilityRuntime):
 
         Args:
             registry: Authoritative metadata registration and lookup boundary.
-            context_provider: Current immutable context source.
             ai_availability_provider: Current AI availability source.
             cancellation: Cooperative cancellation signal for invocations.
             clock: Time source for terminal result metadata.
             event_bus: Event Bus used for execution lifecycle events.
         """
         self._registry = registry
-        self._context_provider = context_provider
         self._ai_availability_provider = ai_availability_provider
         self._cancellation = cancellation
         self._clock = clock
@@ -180,7 +177,7 @@ class InProcessCapabilityRuntime(CapabilityRuntime):
                 request_id=invocation.request_id,
                 plan_id=invocation.plan_id,
                 step_id=invocation.step_id,
-                context=self._context_provider.current_context(),
+                context=invocation.context,
                 permission_grants=invocation.permission_grants,
                 cancellation=self._cancellation,
             )
@@ -224,6 +221,10 @@ class InProcessCapabilityRuntime(CapabilityRuntime):
         if not invocation.capability_id.strip():
             raise InvalidCapabilityInvocationError(
                 "Invocation capability identifier must be non-empty."
+            )
+        if not isinstance(invocation.context, ContextSnapshot):
+            raise InvalidCapabilityInvocationError(
+                "Invocation context must be a ContextSnapshot."
             )
         if not isinstance(invocation.arguments, tuple) or any(
             not isinstance(argument, CapabilityArgument)

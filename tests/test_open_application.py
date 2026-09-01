@@ -36,7 +36,6 @@ from tests.support import (
     FixedClock,
     RecordingApplicationController,
     StaticAIAvailabilityProvider,
-    StaticContextProvider,
 )
 
 
@@ -47,15 +46,6 @@ def make_runtime(
     registry = InMemoryCapabilityRegistry()
     runtime = InProcessCapabilityRuntime(
         registry,
-        StaticContextProvider(
-            ContextSnapshot(
-                ContextType.WORKING,
-                0.9,
-                NOW,
-                NOW,
-                ContextSignalStatus.COMPLETE,
-            )
-        ),
         StaticAIAvailabilityProvider(
             AIProviderAvailability(AIProviderAvailabilityState.UNAVAILABLE)
         ),
@@ -75,6 +65,13 @@ def make_invocation(application_id: str = "calculator") -> CapabilityInvocation:
         step_id="step-1",
         capability_id=OPEN_APPLICATION_CAPABILITY_ID,
         arguments=(CapabilityArgument(APPLICATION_ID_ARGUMENT, application_id),),
+        context=ContextSnapshot(
+            ContextType.WORKING,
+            0.9,
+            NOW,
+            NOW,
+            ContextSignalStatus.AVAILABLE,
+        ),
         timeout_seconds=None,
         permission_grants=(APPLICATION_CONTROL_PERMISSION,),
     )
