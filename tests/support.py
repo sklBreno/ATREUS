@@ -16,6 +16,8 @@ from atreus.interfaces.application_controller import ApplicationController
 from atreus.interfaces.capability import Capability
 from atreus.interfaces.clock import Clock
 from atreus.interfaces.context import ContextProvider
+from atreus.interfaces.log_writer import LogWriter
+from atreus.logging.models import StructuredLogRecord
 from atreus.system.models import (
     ApplicationInstance,
     ApplicationLaunchRequest,
@@ -77,6 +79,22 @@ class RecordingApplicationController(ApplicationController):
         """Record and return one normalized application instance."""
         self.calls.append((request, context))
         return ApplicationInstance(request.application_id, self._process_id)
+
+
+class RecordingLogWriter(LogWriter):
+    """Retain structured records without filesystem access."""
+
+    def __init__(self) -> None:
+        """Initialize an empty record collection."""
+        self.records: list[StructuredLogRecord] = []
+
+    def write(self, record: StructuredLogRecord) -> None:
+        """Record one structured observability value.
+
+        Args:
+            record: Sanitized record produced by the observer.
+        """
+        self.records.append(record)
 
 
 class RecordingCapability(Capability):

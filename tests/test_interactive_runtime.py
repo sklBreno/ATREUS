@@ -10,7 +10,11 @@ from atreus.runtime.console import InteractiveConsole
 from atreus.system.windows_application_controller import (
     WindowsApplicationController,
 )
-from tests.support import FixedClock, RecordingApplicationController
+from tests.support import (
+    FixedClock,
+    RecordingApplicationController,
+    RecordingLogWriter,
+)
 
 
 class InputSequence:
@@ -36,6 +40,7 @@ def build_console(
     runtime = Bootstrap(
         application_controller=controller or RecordingApplicationController(),
         clock=FixedClock(),
+        log_writer=RecordingLogWriter(),
     ).compose()
     input_reader = InputSequence(inputs)
     outputs: list[str] = []

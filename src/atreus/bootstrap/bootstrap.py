@@ -1,5 +1,7 @@
 """Production dependency composition for the ATREUS local runtime."""
 
+from pathlib import Path
+
 from atreus.ai.unavailable_availability import UnavailableAIAvailabilityProvider
 from atreus.capability.contracts import OPEN_APPLICATION_CAPABILITY_ID
 from atreus.capability.open_application import OpenApplicationCapability
@@ -15,6 +17,9 @@ from atreus.execution.runtime import InProcessCapabilityRuntime
 from atreus.interfaces.application_controller import ApplicationController
 from atreus.interfaces.clock import Clock
 from atreus.interfaces.configuration import ConfigurationProvider
+from atreus.interfaces.log_writer import LogWriter
+from atreus.logging.event_observer import EventLogObserver
+from atreus.logging.jsonl_writer import JsonLinesLogWriter
 from atreus.planner.models import PlanningConstraints
 from atreus.planner.planner import DeterministicPlanner
 from atreus.request_classifier.classifier import DeterministicRequestClassifier
@@ -32,6 +37,7 @@ from atreus.system.windows_application_controller import WindowsApplicationContr
 _INTERACTIVE_V0_PERMISSION_GRANTS = (APPLICATION_CONTROL_PERMISSION,)
 _INTERACTIVE_V0_MINIMUM_CONFIDENCE = 0.5
 _INTERACTIVE_V0_MAXIMUM_PLAN_STEPS = 1
+_OBSERVABILITY_V0_LOG_PATH = Path("logs/atreus.log")
 
 
 class Bootstrap:
@@ -43,6 +49,8 @@ class Bootstrap:
         application_controller: ApplicationController | None = None,
         clock: Clock | None = None,
         permission_grants: tuple[str, ...] = _INTERACTIVE_V0_PERMISSION_GRANTS,
+        log_writer: LogWriter | None = None,
+        log_path: Path = _OBSERVABILITY_V0_LOG_PATH,
     ) -> None:
         """Initialize Bootstrap with injectable infrastructure boundaries.
 
@@ -52,6 +60,8 @@ class Bootstrap:
             application_controller: Controlled desktop application boundary.
             clock: Time source shared by production runtime components.
             permission_grants: Explicit grants supplied to Runtime enforcement.
+            log_writer: Optional injected structured logging boundary.
+            log_path: Local JSON Lines destination used by the default writer.
         """
         self._configuration_provider = (
             configuration_provider
@@ -65,6 +75,8 @@ class Bootstrap:
         )
         self._clock = clock if clock is not None else UTCClock()
         self._permission_grants = permission_grants
+        self._log_writer = log_writer
+        self._log_path = log_path
 
     def run(self) -> Configuration:
         """Initialize and return the foundation runtime configuration.
@@ -80,8 +92,17 @@ class Bootstrap:
         Returns:
             A request boundary backed by the complete production pipeline.
         """
-        self._configuration_provider.load()
+        configuration = self._configuration_provider.load()
         event_bus = InProcessEventBus()
+        log_writer = (
+            self._log_writer
+            if self._log_writer is not None
+            else JsonLinesLogWriter(
+                self._log_path,
+                configuration.log_level,
+            )
+        )
+        EventLogObserver(log_writer).subscribe(event_bus)
         context_provider = UnavailableContextProvider(self._clock)
         registry = InMemoryCapabilityRegistry(event_bus)
         capability_runtime = InProcessCapabilityRuntime(

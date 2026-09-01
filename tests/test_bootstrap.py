@@ -6,7 +6,11 @@ from atreus.configuration.configuration_manager import ConfigurationManager
 from atreus.configuration.loader import ConfigurationLoader
 from atreus.decision.models import DecisionOutcome
 from atreus.execution.models import CapabilityExecutionStatus
-from tests.support import FixedClock, RecordingApplicationController
+from tests.support import (
+    FixedClock,
+    RecordingApplicationController,
+    RecordingLogWriter,
+)
 
 
 def test_bootstrap_runs_configuration_foundation_flow() -> None:
@@ -27,6 +31,7 @@ def test_bootstrap_composes_complete_production_runtime() -> None:
     runtime = Bootstrap(
         application_controller=controller,
         clock=FixedClock(),
+        log_writer=RecordingLogWriter(),
     ).compose()
 
     result = runtime.submit("open calculator")
@@ -50,6 +55,7 @@ def test_bootstrap_does_not_bypass_runtime_permission_enforcement() -> None:
         application_controller=controller,
         clock=FixedClock(),
         permission_grants=(),
+        log_writer=RecordingLogWriter(),
     ).compose()
 
     result = runtime.submit("open calculator")
