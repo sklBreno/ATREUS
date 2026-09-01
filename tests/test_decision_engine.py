@@ -1,0 +1,360 @@
+"""Behavior tests for the deterministic Decision Engine."""
+
+from dataclasses import FrozenInstanceError
+from uuid import uuid4
+
+import pytest
+
+from atreus.capability.models import (
+    CapabilityAvailability,
+    CapabilityAvailabilityState,
+    CapabilityMetadata,
+)
+from atreus.context.models import (
+    ContextSignalStatus,
+    ContextSnapshot,
+    ContextType,
+)
+from atreus.decision.decision_engine import DeterministicDecisionEngine
+from atreus.decision.exceptions import InconsistentDecisionInputError
+from atreus.decision.models import (
+    DecisionInput,
+    DecisionMade,
+    DecisionOutcome,
+    DecisionPolicy,
+    PlatformBehaviorDecisionInput,
+    PlatformBehaviorDecisionMade,
+    PlatformBehaviorPolicy,
+    UserPolicy,
+)
+from atreus.events.event_bus import InProcessEventBus
+from atreus.request_classifier.models import ClassifiedRequest, RequestType
+from atreus.shared.platform import (
+    OperationalState,
+    PerformanceProfile,
+    PlatformStateSnapshot,
+)
+from atreus.shared.request import Request
+from tests.support import NOW
+
+
+def make_metadata(
+    identifier: str,
+    *,
+    permissions: tuple[str, ...] = (),
+) -> CapabilityMetadata:
+    """Create available capability metadata for decision tests."""
+    return CapabilityMetadata(
+        identifier=identifier,
+        name=identifier,
+        description=f"Provide {identifier}.",
+        permissions=permissions,
+        availability=CapabilityAvailability(
+            CapabilityAvailabilityState.AVAILABLE
+        ),
+        dependencies=(),
+        requires_ai=False,
+    )
+
+
+def make_input(
+    *,
+    content: str = "Run system.snapshot",
+    request_type: RequestType = RequestType.COMMAND,
+    confidence: float = 0.9,
+    candidates: tuple[CapabilityMetadata, ...] = (),
+    permission_grants: tuple[str, ...] = (),
+    blocked_capability_ids: tuple[str, ...] = (),
+    allow_interruption: bool = True,
+    allow_delegation: bool = False,
+    delegation_service_id: str | None = None,
+    operational_state: OperationalState = OperationalState.ACTIVE,
+    performance_profile: PerformanceProfile = PerformanceProfile.BALANCED,
+) -> DecisionInput:
+    """Create one coherent immutable DecisionInput."""
+    request_id = uuid4()
+    request = Request(request_id, content, "text", NOW)
+    return DecisionInput(
+        request=request,
+        classification=ClassifiedRequest(
+            request_id,
+            request_type,
+            confidence,
+        ),
+        context=ContextSnapshot(
+            ContextType.WORKING,
+            0.9,
+            NOW,
+            NOW,
+            ContextSignalStatus.COMPLETE,
+        ),
+        platform_state=PlatformStateSnapshot(
+            "RUNNING",
+            operational_state,
+            performance_profile,
+            NOW,
+            NOW,
+        ),
+        user_policy=UserPolicy(
+            permission_grants,
+            blocked_capability_ids,
+            allow_interruption,
+            allow_delegation,
+            delegation_service_id,
+        ),
+        candidate_capabilities=candidates,
+    )
+
+
+def make_engine(
+    event_bus: InProcessEventBus | None = None,
+) -> DeterministicDecisionEngine:
+    """Create a deterministic engine with an explicit confidence threshold."""
+    return DeterministicDecisionEngine(DecisionPolicy(0.5), event_bus)
+
+
+def test_command_with_one_permitted_capability_selects_execute() -> None:
+    capability = make_metadata(
+        "system.snapshot",
+        permissions=("system.metrics.read",),
+    )
+
+    decision = make_engine().decide(
+        make_input(
+            candidates=(capability,),
+            permission_grants=("system.metrics.read",),
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.EXECUTE
+    assert decision.target == "system.snapshot"
+
+
+def test_unrelated_command_does_not_select_sole_available_capability() -> None:
+    decision = make_engine().decide(
+        make_input(
+            content="Open calculator",
+            candidates=(make_metadata("system.snapshot"),),
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.ASK_FOR_CONFIRMATION
+    assert decision.target is None
+    assert decision.reason_code == "capability_target_not_established"
+
+
+def test_low_confidence_requires_confirmation() -> None:
+    decision = make_engine().decide(make_input(confidence=0.25))
+
+    assert decision.outcome is DecisionOutcome.ASK_FOR_CONFIRMATION
+    assert decision.target is None
+
+
+def test_multiple_eligible_command_targets_require_confirmation() -> None:
+    decision = make_engine().decide(
+        make_input(
+            candidates=(make_metadata("a"), make_metadata("b")),
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.ASK_FOR_CONFIRMATION
+
+
+@pytest.mark.parametrize("request_type", [RequestType.INTENTION, RequestType.TASK])
+def test_high_level_requests_request_planning(request_type: RequestType) -> None:
+    decision = make_engine().decide(
+        make_input(
+            request_type=request_type,
+            candidates=(make_metadata("system.snapshot"),),
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.REQUEST_PLANNING
+    assert decision.target is None
+
+
+def test_question_delegates_only_to_explicit_allowed_service() -> None:
+    decision = make_engine().decide(
+        make_input(
+            request_type=RequestType.QUESTION,
+            allow_delegation=True,
+            delegation_service_id="ai.default",
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.DELEGATE
+    assert decision.target == "ai.default"
+
+
+def test_disabled_interruption_returns_suggestion_without_execution() -> None:
+    decision = make_engine().decide(
+        make_input(
+            candidates=(make_metadata("system.snapshot"),),
+            allow_interruption=False,
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.SUGGEST
+    assert decision.target == "system.snapshot"
+
+
+def test_no_available_capability_is_ignored() -> None:
+    decision = make_engine().decide(make_input())
+
+    assert decision.outcome is DecisionOutcome.IGNORE
+    assert decision.reason_code == "no_available_capability"
+
+
+def test_missing_permissions_never_produces_execute() -> None:
+    capability = make_metadata(
+        "system.snapshot",
+        permissions=("system.metrics.read",),
+    )
+
+    decision = make_engine().decide(make_input(candidates=(capability,)))
+
+    assert decision.outcome is DecisionOutcome.IGNORE
+    assert decision.reason_code == "required_permission_missing"
+
+
+def test_missing_permissions_precede_confidence_and_state_restrictions() -> None:
+    capability = make_metadata(
+        "system.snapshot",
+        permissions=("system.metrics.read",),
+    )
+
+    decision = make_engine().decide(
+        make_input(
+            confidence=0.25,
+            candidates=(capability,),
+            operational_state=OperationalState.STANDBY,
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.IGNORE
+    assert decision.reason_code == "required_permission_missing"
+
+
+def test_standby_prevents_execution() -> None:
+    decision = make_engine().decide(
+        make_input(
+            candidates=(make_metadata("system.snapshot"),),
+            operational_state=OperationalState.STANDBY,
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.IGNORE
+    assert decision.reason_code == "operational_state_standby"
+
+
+def test_inconsistent_request_identity_raises_explicit_error() -> None:
+    decision_input = make_input()
+    inconsistent = DecisionInput(
+        request=decision_input.request,
+        classification=ClassifiedRequest(uuid4(), RequestType.COMMAND, 0.9),
+        context=decision_input.context,
+        platform_state=decision_input.platform_state,
+        user_policy=decision_input.user_policy,
+        candidate_capabilities=decision_input.candidate_capabilities,
+    )
+
+    with pytest.raises(InconsistentDecisionInputError):
+        make_engine().decide(inconsistent)
+
+
+def test_decision_is_immutable_and_deterministic() -> None:
+    decision_input = make_input(candidates=(make_metadata("system.snapshot"),))
+    engine = make_engine()
+
+    first = engine.decide(decision_input)
+    second = engine.decide(decision_input)
+
+    assert first == second
+    with pytest.raises(FrozenInstanceError):
+        first.target = "changed"  # type: ignore[misc]
+    assert not hasattr(first, "execute")
+
+
+def test_decision_event_excludes_raw_request_content() -> None:
+    event_bus = InProcessEventBus()
+    events: list[DecisionMade] = []
+    event_bus.subscribe(DecisionMade, events.append)
+
+    make_engine(event_bus).decide(
+        make_input(candidates=(make_metadata("system.snapshot"),))
+    )
+
+    assert len(events) == 1
+    assert not hasattr(events[0], "request")
+    assert not hasattr(events[0], "content")
+
+
+def test_platform_behavior_preserves_independent_current_values() -> None:
+    event_bus = InProcessEventBus()
+    events: list[PlatformBehaviorDecisionMade] = []
+    event_bus.subscribe(PlatformBehaviorDecisionMade, events.append)
+    request_input = make_input(
+        operational_state=OperationalState.PASSIVE,
+        performance_profile=PerformanceProfile.IDLE,
+    )
+    platform_input = PlatformBehaviorDecisionInput(
+        evaluation_id=uuid4(),
+        platform_state=request_input.platform_state,
+        context=request_input.context,
+        system_signals=(),
+        configuration_policy=PlatformBehaviorPolicy(
+            tuple(OperationalState),
+            tuple(PerformanceProfile),
+        ),
+        user_policy=request_input.user_policy,
+        trigger="periodic_evaluation",
+    )
+
+    decision = make_engine(event_bus).decide_platform_behavior(platform_input)
+
+    assert decision.desired_operational_state is OperationalState.PASSIVE
+    assert decision.desired_performance_profile is PerformanceProfile.IDLE
+    assert len(events) == 1
+    assert not hasattr(events[0], "applied")
+
+
+@pytest.mark.parametrize("operational_state", tuple(OperationalState))
+@pytest.mark.parametrize("performance_profile", tuple(PerformanceProfile))
+def test_platform_behavior_keeps_state_and_profile_independent(
+    operational_state: OperationalState,
+    performance_profile: PerformanceProfile,
+) -> None:
+    request_input = make_input(
+        operational_state=operational_state,
+        performance_profile=performance_profile,
+    )
+    platform_input = PlatformBehaviorDecisionInput(
+        evaluation_id=uuid4(),
+        platform_state=request_input.platform_state,
+        context=request_input.context,
+        system_signals=(),
+        configuration_policy=PlatformBehaviorPolicy(
+            tuple(OperationalState),
+            tuple(PerformanceProfile),
+        ),
+        user_policy=request_input.user_policy,
+        trigger="periodic_evaluation",
+    )
+
+    decision = make_engine().decide_platform_behavior(platform_input)
+
+    assert decision.desired_operational_state is operational_state
+    assert decision.desired_performance_profile is performance_profile
+
+
+def test_performance_profile_can_limit_non_command_work() -> None:
+    decision = make_engine().decide(
+        make_input(
+            request_type=RequestType.TASK,
+            candidates=(make_metadata("system.snapshot"),),
+            performance_profile=PerformanceProfile.PERFORMANCE,
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.SUGGEST
+    assert decision.reason_code == "performance_profile_limits_non_command_work"

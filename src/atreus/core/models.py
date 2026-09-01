@@ -1,18 +1,16 @@
 """Immutable contracts owned by the Core orchestration boundary."""
 
 from dataclasses import dataclass
-from enum import StrEnum
 from uuid import UUID
 
-from atreus.capability.models import CapabilityMetadata
+from atreus.decision.models import Decision, DecisionOutcome
 from atreus.events.models import Event
+from atreus.execution.models import (
+    CapabilityExecutionResult,
+    CapabilityExecutionStatus,
+)
+from atreus.planner.models import Plan
 from atreus.request_classifier.models import ClassifiedRequest
-
-
-class CoreRequestStatus(StrEnum):
-    """Identify the controlled Phase A orchestration outcome."""
-
-    DECISION_REQUIRED = "DECISION_REQUIRED"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -22,11 +20,30 @@ class RequestReceived(Event):
     request_id: UUID
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class RequestCompleted(Event):
+    """Report completion of the currently supported request orchestration."""
+
+    request_id: UUID
+    decision_outcome: DecisionOutcome
+    execution_statuses: tuple[CapabilityExecutionStatus, ...]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ErrorOccurred(Event):
+    """Report a sanitized Core orchestration failure."""
+
+    request_id: UUID
+    orchestration_step: str
+    error_type: str
+
+
 @dataclass(frozen=True, slots=True)
 class CoreRequestResult:
-    """Represent the Phase A boundary before future decision processing."""
+    """Represent one explicit Phase B request orchestration result."""
 
     request_id: UUID
     classification: ClassifiedRequest
-    available_capabilities: tuple[CapabilityMetadata, ...]
-    status: CoreRequestStatus
+    decision: Decision
+    plan: Plan | None
+    execution_results: tuple[CapabilityExecutionResult, ...]
