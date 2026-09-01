@@ -7,6 +7,9 @@ import pytest
 from atreus.__main__ import main
 from atreus.bootstrap.bootstrap import Bootstrap
 from atreus.runtime.console import InteractiveConsole
+from atreus.system.windows_application_controller import (
+    WindowsApplicationController,
+)
 from tests.support import FixedClock, RecordingApplicationController
 
 
@@ -40,10 +43,13 @@ def build_console(
     return console, input_reader, outputs
 
 
-def test_console_opens_calculator_through_production_pipeline() -> None:
+@pytest.mark.parametrize("application_id", ("calculator", "notepad", "spotify"))
+def test_console_formats_approved_application_success(
+    application_id: str,
+) -> None:
     controller = RecordingApplicationController()
     console, input_reader, outputs = build_console(
-        ("open calculator", "exit"),
+        (f"open {application_id}", "exit"),
         controller=controller,
     )
 
@@ -51,16 +57,18 @@ def test_console_opens_calculator_through_production_pipeline() -> None:
 
     assert exit_status == 0
     assert input_reader.prompts == ["ATREUS > ", "ATREUS > "]
-    assert outputs == ["Opened calculator."]
+    assert outputs == [f"Opened {application_id}."]
     assert len(controller.calls) == 1
 
 
 @pytest.mark.parametrize(
     "content",
     (
-        "open spotify",
-        "shutdown computer",
         "open calculator && shutdown",
+        "open notepad && calc",
+        "open spotify && anything",
+        "open calculator please run shutdown",
+        "shutdown computer",
         "arbitrary text",
     ),
 )
@@ -75,6 +83,24 @@ def test_console_does_not_execute_unrelated_requests(content: str) -> None:
 
     assert outputs == ["I need clarification before I can act."]
     assert controller.calls == []
+
+
+def test_production_flow_reports_unmapped_spotify_without_process_start() -> None:
+    commands: list[tuple[str, ...]] = []
+
+    def start_process(command: tuple[str, ...]) -> int:
+        commands.append(command)
+        return 4321
+
+    controller = WindowsApplicationController(start_process, "win32")
+    console, _, outputs = build_console(
+        ("open spotify", "exit"),
+        controller=controller,
+    )
+
+    assert console.run() == 0
+    assert outputs == ["Unable to complete the request."]
+    assert commands == []
 
 
 @pytest.mark.parametrize("command", ("exit", "quit", " EXIT "))

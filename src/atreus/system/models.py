@@ -15,6 +15,8 @@ class ApplicationIdentifier(StrEnum):
     """Identify one application approved for controlled system launch."""
 
     CALCULATOR = "calculator"
+    NOTEPAD = "notepad"
+    SPOTIFY = "spotify"
 
 
 class MetricAvailabilityStatus(StrEnum):

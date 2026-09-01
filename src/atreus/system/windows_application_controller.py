@@ -22,6 +22,7 @@ from atreus.system.models import (
 
 _APPLICATION_COMMANDS = {
     ApplicationIdentifier.CALCULATOR: ("calc.exe",),
+    ApplicationIdentifier.NOTEPAD: ("notepad.exe",),
 }
 type _ProcessStarter = Callable[[tuple[str, ...]], int]
 
@@ -93,7 +94,12 @@ class WindowsApplicationController(ApplicationController):
                 "Application launch is unavailable on this platform."
             )
 
-        command = _APPLICATION_COMMANDS[request.application_id]
+        command = _APPLICATION_COMMANDS.get(request.application_id)
+        if command is None:
+            raise UnsupportedSystemOperationError(
+                f"Application '{request.application_id}' has no approved "
+                "Windows launch mapping."
+            )
         try:
             process_id = self._process_starter(command)
         except OSError:

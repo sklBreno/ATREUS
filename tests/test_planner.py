@@ -118,7 +118,18 @@ def test_single_available_capability_creates_one_step_plan() -> None:
     assert plan.steps[0].arguments == ()
 
 
-def test_open_calculator_plan_contains_allowlisted_application_argument() -> None:
+@pytest.mark.parametrize(
+    ("goal", "application_id"),
+    (
+        ("open calculator", "calculator"),
+        ("  OPEN   NOTEPAD!  ", "notepad"),
+        ("Open Spotify.", "spotify"),
+    ),
+)
+def test_open_application_plan_contains_allowlisted_argument(
+    goal: str,
+    application_id: str,
+) -> None:
     registry = InMemoryCapabilityRegistry()
     registry.register(
         make_metadata(
@@ -130,7 +141,7 @@ def test_open_calculator_plan_contains_allowlisted_application_argument() -> Non
 
     plan = make_planner(registry).create_plan(
         make_request(
-            goal="open calculator",
+            goal=goal,
             allowed=("application.open", "system.snapshot"),
             maximum_steps=1,
         )
@@ -139,12 +150,12 @@ def test_open_calculator_plan_contains_allowlisted_application_argument() -> Non
     assert len(plan.steps) == 1
     assert plan.steps[0].capability_id == "application.open"
     assert plan.steps[0].arguments == (
-        CapabilityArgument("application_id", "calculator"),
+        CapabilityArgument("application_id", application_id),
     )
     assert plan.required_permissions == ("application.control",)
 
 
-def test_open_calculator_fails_outside_planning_allowlist() -> None:
+def test_open_application_fails_outside_planning_allowlist() -> None:
     registry = InMemoryCapabilityRegistry()
     registry.register(make_metadata("application.open"))
 

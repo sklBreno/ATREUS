@@ -2,6 +2,8 @@
 
 from uuid import uuid4
 
+import pytest
+
 from atreus.ai.models import (
     AIProviderAvailability,
     AIProviderAvailabilityState,
@@ -20,10 +22,14 @@ from atreus.context.models import (
 )
 from atreus.execution.models import CapabilityExecutionStatus, CapabilityInvocation
 from atreus.execution.runtime import InProcessCapabilityRuntime
+from atreus.interfaces.application_controller import ApplicationController
 from atreus.shared.cancellation import StaticCancellationSignal
 from atreus.system.models import (
     APPLICATION_CONTROL_PERMISSION,
     ApplicationIdentifier,
+)
+from atreus.system.windows_application_controller import (
+    WindowsApplicationController,
 )
 from tests.support import (
     NOW,
@@ -35,7 +41,7 @@ from tests.support import (
 
 
 def make_runtime(
-    controller: RecordingApplicationController,
+    controller: ApplicationController,
 ) -> tuple[InProcessCapabilityRuntime, InMemoryCapabilityRegistry]:
     """Create a Runtime loaded with the controlled application capability."""
     registry = InMemoryCapabilityRegistry()
@@ -84,22 +90,33 @@ def test_runtime_loading_registers_open_application_capability() -> None:
     assert metadata.requires_ai is False
 
 
-def test_runtime_invokes_open_application_through_system_boundary() -> None:
+@pytest.mark.parametrize(
+    ("application_id", "expected_identifier"),
+    (
+        ("calculator", ApplicationIdentifier.CALCULATOR),
+        ("notepad", ApplicationIdentifier.NOTEPAD),
+        ("spotify", ApplicationIdentifier.SPOTIFY),
+    ),
+)
+def test_runtime_invokes_open_application_through_system_boundary(
+    application_id: str,
+    expected_identifier: ApplicationIdentifier,
+) -> None:
     controller = RecordingApplicationController(process_id=9876)
     runtime, _ = make_runtime(controller)
 
-    result = runtime.invoke(make_invocation())
+    result = runtime.invoke(make_invocation(application_id))
 
     assert result.status is CapabilityExecutionStatus.SUCCEEDED
     assert result.output is not None
     assert tuple((item.name, item.value) for item in result.output) == (
-        ("application_id", "calculator"),
+        ("application_id", application_id),
         ("process_id", 9876),
         ("status", "launched"),
     )
     assert len(controller.calls) == 1
     request, context = controller.calls[0]
-    assert request.application_id is ApplicationIdentifier.CALCULATOR
+    assert request.application_id is expected_identifier
     assert context.capability_id == OPEN_APPLICATION_CAPABILITY_ID
     assert context.permission_grants == (APPLICATION_CONTROL_PERMISSION,)
 
@@ -108,8 +125,26 @@ def test_runtime_isolates_unapproved_application_identifier() -> None:
     controller = RecordingApplicationController()
     runtime, _ = make_runtime(controller)
 
-    result = runtime.invoke(make_invocation("spotify"))
+    result = runtime.invoke(make_invocation("terminal"))
 
     assert result.status is CapabilityExecutionStatus.FAILED
     assert result.error_code == "capability_execution_failed"
     assert controller.calls == []
+
+
+def test_runtime_isolates_missing_windows_launch_mapping() -> None:
+    commands: list[tuple[str, ...]] = []
+
+    def start_process(command: tuple[str, ...]) -> int:
+        commands.append(command)
+        return 9876
+
+    runtime, _ = make_runtime(
+        WindowsApplicationController(start_process, "win32")
+    )
+
+    result = runtime.invoke(make_invocation("spotify"))
+
+    assert result.status is CapabilityExecutionStatus.FAILED
+    assert result.error_code == "capability_execution_failed"
+    assert commands == []
