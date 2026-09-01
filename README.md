@@ -20,4 +20,4 @@ Every interaction is an opportunity to learn.
 
 🚧 Under active development.
 
-Version: v0.0.1 - Genesis
+Version: 0.1.0-alpha

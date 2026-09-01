@@ -1,0 +1,252 @@
+"""Core request orchestration for Runtime Phase B."""
+
+from uuid import UUID, uuid4
+
+from atreus.core.exceptions import (
+    InconsistentClassificationError,
+    InconsistentDecisionError,
+    InconsistentPlanError,
+)
+from atreus.core.models import (
+    CoreRequestResult,
+    ErrorOccurred,
+    RequestCompleted,
+    RequestReceived,
+)
+from atreus.decision.models import Decision, DecisionInput, DecisionOutcome, UserPolicy
+from atreus.execution.models import (
+    CapabilityExecutionResult,
+    CapabilityExecutionStatus,
+    CapabilityInvocation,
+)
+from atreus.interfaces.capability_registry import CapabilityCatalog
+from atreus.interfaces.capability_runtime import CapabilityRuntime
+from atreus.interfaces.context import ContextProvider
+from atreus.interfaces.decision_engine import DecisionEngine
+from atreus.interfaces.event_bus import EventBus
+from atreus.interfaces.planner import Planner
+from atreus.interfaces.request_classifier import RequestClassifier
+from atreus.planner.models import Plan, PlanningConstraints, PlanningRequest
+from atreus.shared.platform import PlatformStateSnapshot
+from atreus.shared.request import Request
+
+
+class Core:
+    """Coordinate explicit request flow without absorbing domain work."""
+
+    def __init__(
+        self,
+        event_bus: EventBus,
+        request_classifier: RequestClassifier,
+        capability_catalog: CapabilityCatalog,
+        decision_engine: DecisionEngine,
+        planner: Planner,
+        capability_runtime: CapabilityRuntime,
+        context_provider: ContextProvider,
+        platform_state: PlatformStateSnapshot,
+        user_policy: UserPolicy,
+        planning_constraints: PlanningConstraints,
+        execution_timeout_seconds: float | None,
+    ) -> None:
+        """Initialize Core with explicit runtime contracts.
+
+        Args:
+            event_bus: Synchronous domain event publication boundary.
+            request_classifier: Request classification boundary.
+            capability_catalog: Read-only capability discovery boundary.
+            decision_engine: Request decision boundary.
+            planner: Immutable plan creation boundary.
+            capability_runtime: Controlled capability invocation boundary.
+            context_provider: Current immutable context source.
+            platform_state: Current immutable Core-owned state snapshot.
+            user_policy: Grants and user-control policy for orchestration.
+            planning_constraints: Bounded policy for generated plans.
+            execution_timeout_seconds: Optional injected invocation deadline.
+        """
+        self._event_bus = event_bus
+        self._request_classifier = request_classifier
+        self._capability_catalog = capability_catalog
+        self._decision_engine = decision_engine
+        self._planner = planner
+        self._capability_runtime = capability_runtime
+        self._context_provider = context_provider
+        self._platform_state = platform_state
+        self._user_policy = user_policy
+        self._planning_constraints = planning_constraints
+        self._execution_timeout_seconds = execution_timeout_seconds
+
+    def handle_request(self, request: Request) -> CoreRequestResult:
+        """Coordinate one request through decision, planning, and execution.
+
+        Args:
+            request: Immutable normalized request accepted for orchestration.
+
+        Returns:
+            A controlled result containing every completed pipeline contract.
+
+        Raises:
+            InconsistentClassificationError: If classification changes identity.
+            InconsistentDecisionError: If decision correlation is invalid.
+            InconsistentPlanError: If plan correlation is invalid.
+        """
+        self._event_bus.publish(
+            RequestReceived(
+                source="core",
+                correlation_id=request.request_id,
+                request_id=request.request_id,
+            )
+        )
+        orchestration_step = "request_classification"
+        try:
+            classification = self._request_classifier.classify(request)
+            if classification.request_id != request.request_id:
+                raise InconsistentClassificationError(
+                    "Classification request identity does not match Core input."
+                )
+
+            orchestration_step = "context_snapshot"
+            context = self._context_provider.current_context()
+            orchestration_step = "request_decision"
+            decision = self._decision_engine.decide(
+                DecisionInput(
+                    request=request,
+                    classification=classification,
+                    context=context,
+                    platform_state=self._platform_state,
+                    user_policy=self._user_policy,
+                    candidate_capabilities=(
+                        self._capability_catalog.list_available()
+                    ),
+                )
+            )
+            if decision.request_id != request.request_id:
+                raise InconsistentDecisionError(
+                    "Decision request identity does not match Core input."
+                )
+
+            plan: Plan | None = None
+            execution_results: tuple[CapabilityExecutionResult, ...] = ()
+            if decision.outcome is DecisionOutcome.EXECUTE:
+                orchestration_step = "direct_execution"
+                execution_results = (self._execute_direct(request, decision),)
+            elif decision.outcome is DecisionOutcome.REQUEST_PLANNING:
+                orchestration_step = "planning"
+                planning_id = uuid4()
+                plan = self._planner.create_plan(
+                    PlanningRequest(
+                        planning_id=planning_id,
+                        request_id=request.request_id,
+                        goal=request.content,
+                        constraints=self._planning_constraints,
+                        context=context,
+                    )
+                )
+                if (
+                    plan.plan_id != planning_id
+                    or plan.request_id != request.request_id
+                ):
+                    raise InconsistentPlanError(
+                        "Plan identity does not match the planning request."
+                    )
+                if not plan.requires_confirmation and not any(
+                    step.requires_confirmation for step in plan.steps
+                ):
+                    orchestration_step = "plan_execution"
+                    execution_results = self._execute_plan(plan)
+        except Exception as error:
+            self._publish_error(
+                request.request_id,
+                orchestration_step,
+                type(error).__name__,
+            )
+            raise
+
+        result = CoreRequestResult(
+            request_id=request.request_id,
+            classification=classification,
+            decision=decision,
+            plan=plan,
+            execution_results=execution_results,
+        )
+        self._publish_completed(result)
+        return result
+
+    def _execute_direct(
+        self,
+        request: Request,
+        decision: Decision,
+    ) -> CapabilityExecutionResult:
+        if decision.target is None:
+            raise InconsistentDecisionError(
+                "Execute decisions require a capability target."
+            )
+        return self._capability_runtime.invoke(
+            CapabilityInvocation(
+                invocation_id=uuid4(),
+                request_id=request.request_id,
+                plan_id=None,
+                step_id=None,
+                capability_id=decision.target,
+                arguments=(),
+                timeout_seconds=self._execution_timeout_seconds,
+                permission_grants=self._user_policy.permission_grants,
+            )
+        )
+
+    def _execute_plan(
+        self,
+        plan: Plan,
+    ) -> tuple[CapabilityExecutionResult, ...]:
+        results: list[CapabilityExecutionResult] = []
+        successful_steps: set[str] = set()
+        for step in plan.steps:
+            if not set(step.depends_on).issubset(successful_steps):
+                raise InconsistentPlanError(
+                    f"Plan step '{step.step_id}' has unmet dependencies."
+                )
+            result = self._capability_runtime.invoke(
+                CapabilityInvocation(
+                    invocation_id=uuid4(),
+                    request_id=plan.request_id,
+                    plan_id=plan.plan_id,
+                    step_id=step.step_id,
+                    capability_id=step.capability_id,
+                    arguments=step.arguments,
+                    timeout_seconds=self._execution_timeout_seconds,
+                    permission_grants=self._user_policy.permission_grants,
+                )
+            )
+            results.append(result)
+            if result.status is not CapabilityExecutionStatus.SUCCEEDED:
+                break
+            successful_steps.add(step.step_id)
+        return tuple(results)
+
+    def _publish_completed(self, result: CoreRequestResult) -> None:
+        self._event_bus.publish(
+            RequestCompleted(
+                source="core",
+                correlation_id=result.request_id,
+                request_id=result.request_id,
+                decision_outcome=result.decision.outcome,
+                execution_statuses=tuple(
+                    execution.status for execution in result.execution_results
+                ),
+            )
+        )
+
+    def _publish_error(
+        self,
+        request_id: UUID,
+        orchestration_step: str,
+        error_type: str,
+    ) -> None:
+        self._event_bus.publish(
+            ErrorOccurred(
+                source="core",
+                correlation_id=request_id,
+                request_id=request_id,
+                orchestration_step=orchestration_step,
+                error_type=error_type,
+            )
+        )
