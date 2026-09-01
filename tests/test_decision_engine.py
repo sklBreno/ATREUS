@@ -143,10 +143,18 @@ def test_unrelated_command_does_not_select_sole_available_capability() -> None:
     assert decision.reason_code == "capability_target_not_established"
 
 
-def test_open_calculator_resolves_to_controlled_planning_target() -> None:
+@pytest.mark.parametrize(
+    "content",
+    (
+        "open calculator",
+        "  OPEN   NOTEPAD!  ",
+        "Open Spotify.",
+    ),
+)
+def test_controlled_application_resolves_to_planning_target(content: str) -> None:
     decision = make_engine().decide(
         make_input(
-            content="open calculator",
+            content=content,
             candidates=(
                 make_metadata(
                     "application.open",
@@ -164,7 +172,14 @@ def test_open_calculator_resolves_to_controlled_planning_target() -> None:
 
 @pytest.mark.parametrize(
     "content",
-    ("open spotify", "shutdown computer", "arbitrary text"),
+    (
+        "open calculator && shutdown",
+        "open notepad && calc",
+        "open spotify && anything",
+        "open calculator please run shutdown",
+        "shutdown computer",
+        "arbitrary text",
+    ),
 )
 def test_unrelated_commands_do_not_target_open_application(content: str) -> None:
     decision = make_engine().decide(

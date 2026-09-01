@@ -79,7 +79,17 @@ def test_system_information_boundary_has_no_arbitrary_execution() -> None:
     assert not hasattr(provider, "write_file")
 
 
-def test_windows_controller_launches_only_allowlisted_calculator_command() -> None:
+@pytest.mark.parametrize(
+    ("application_id", "expected_command"),
+    (
+        (ApplicationIdentifier.CALCULATOR, ("calc.exe",)),
+        (ApplicationIdentifier.NOTEPAD, ("notepad.exe",)),
+    ),
+)
+def test_windows_controller_launches_only_allowlisted_application_command(
+    application_id: ApplicationIdentifier,
+    expected_command: tuple[str, ...],
+) -> None:
     commands: list[tuple[str, ...]] = []
 
     def start_process(command: tuple[str, ...]) -> int:
@@ -90,13 +100,32 @@ def test_windows_controller_launches_only_allowlisted_calculator_command() -> No
     context = make_context(grants=(APPLICATION_CONTROL_PERMISSION,))
 
     instance = controller.launch(
-        ApplicationLaunchRequest(ApplicationIdentifier.CALCULATOR),
+        ApplicationLaunchRequest(application_id),
         context,
     )
 
-    assert commands == [("calc.exe",)]
-    assert instance.application_id is ApplicationIdentifier.CALCULATOR
+    assert commands == [expected_command]
+    assert instance.application_id is application_id
     assert instance.process_id == 4321
+
+
+def test_windows_controller_normalizes_approved_identifier_without_mapping() -> None:
+    commands: list[tuple[str, ...]] = []
+
+    def start_process(command: tuple[str, ...]) -> int:
+        commands.append(command)
+        return 4321
+
+    controller = WindowsApplicationController(start_process, "win32")
+
+    with pytest.raises(UnsupportedSystemOperationError) as captured:
+        controller.launch(
+            ApplicationLaunchRequest(ApplicationIdentifier.SPOTIFY),
+            make_context(grants=(APPLICATION_CONTROL_PERMISSION,)),
+        )
+
+    assert "spotify" in str(captured.value)
+    assert commands == []
 
 
 def test_windows_controller_translates_native_launch_failure() -> None:
@@ -132,7 +161,7 @@ def test_windows_controller_enforces_permission_and_cancellation() -> None:
 
 def test_windows_controller_rejects_invalid_and_unsupported_requests() -> None:
     controller = WindowsApplicationController(lambda command: 1234, "win32")
-    invalid_request = ApplicationLaunchRequest("spotify")  # type: ignore[arg-type]
+    invalid_request = ApplicationLaunchRequest("terminal")  # type: ignore[arg-type]
 
     with pytest.raises(InvalidSystemOperationError):
         controller.launch(

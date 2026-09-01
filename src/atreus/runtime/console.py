@@ -5,6 +5,7 @@ from collections.abc import Callable
 from atreus.core.models import CoreRequestResult
 from atreus.decision.models import DecisionOutcome
 from atreus.execution.models import CapabilityExecutionStatus
+from atreus.system.models import ApplicationIdentifier
 
 type RequestHandler = Callable[[str], CoreRequestResult]
 type InputReader = Callable[[str], str]
@@ -71,11 +72,17 @@ class InteractiveConsole:
             for item in execution.output
         )
         output_values = {item.name: item.value for item in successful_outputs}
+        application_id = output_values.get("application_id")
         if (
             output_values.get("status") == "launched"
-            and output_values.get("application_id") == "calculator"
+            and isinstance(application_id, str)
         ):
-            return "Opened calculator."
+            try:
+                approved_application = ApplicationIdentifier(application_id)
+            except ValueError:
+                pass
+            else:
+                return f"Opened {approved_application.value}."
         if result.execution_results:
             return "Unable to complete the request."
         if result.decision.outcome is DecisionOutcome.ASK_FOR_CONFIRMATION:

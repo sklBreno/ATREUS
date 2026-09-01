@@ -2,7 +2,10 @@
 
 from uuid import UUID
 
-from atreus.capability.contracts import OPEN_APPLICATION_CAPABILITY_ID
+from atreus.capability.contracts import (
+    OPEN_APPLICATION_CAPABILITY_ID,
+    OPEN_APPLICATION_COMMAND_TARGETS,
+)
 from atreus.capability.models import (
     CapabilityAvailabilityState,
     CapabilityMetadata,
@@ -22,6 +25,10 @@ from atreus.interfaces.decision_engine import DecisionEngine
 from atreus.interfaces.event_bus import EventBus
 from atreus.request_classifier.models import RequestType
 from atreus.shared.platform import OperationalState, PerformanceProfile
+
+_CONTROLLED_APPLICATION_COMMANDS = frozenset(
+    command for command, _ in OPEN_APPLICATION_COMMAND_TARGETS
+)
 
 
 class DeterministicDecisionEngine(DecisionEngine):
@@ -249,7 +256,7 @@ class DeterministicDecisionEngine(DecisionEngine):
         if (
             permitted[0].identifier == OPEN_APPLICATION_CAPABILITY_ID
             and DeterministicDecisionEngine._normalize_request(request_content)
-            == "open calculator"
+            in _CONTROLLED_APPLICATION_COMMANDS
         ):
             return Decision(
                 request_id,
@@ -300,7 +307,7 @@ class DeterministicDecisionEngine(DecisionEngine):
         )
         resolved_target = (
             OPEN_APPLICATION_CAPABILITY_ID
-            if normalized_request == "open calculator"
+            if normalized_request in _CONTROLLED_APPLICATION_COMMANDS
             else None
         )
         return tuple(

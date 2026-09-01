@@ -5,6 +5,7 @@ from datetime import UTC
 from atreus.capability.contracts import (
     APPLICATION_ID_ARGUMENT,
     OPEN_APPLICATION_CAPABILITY_ID,
+    OPEN_APPLICATION_COMMAND_TARGETS,
     CapabilityArgument,
     CapabilityArguments,
 )
@@ -28,6 +29,8 @@ from atreus.planner.models import (
     PlanningRequest,
     PlanStep,
 )
+
+_APPLICATION_IDS_BY_COMMAND = dict(OPEN_APPLICATION_COMMAND_TARGETS)
 
 
 class DeterministicPlanner(Planner):
@@ -123,7 +126,7 @@ class DeterministicPlanner(Planner):
         goal: str,
         constraints: PlanningConstraints,
     ) -> tuple[str, ...]:
-        if self._normalize_goal(goal) == "open calculator":
+        if self._application_id(goal) is not None:
             allowed = constraints.allowed_capability_ids
             if allowed is not None and OPEN_APPLICATION_CAPABILITY_ID not in allowed:
                 raise GoalNotPlannableError(
@@ -154,12 +157,16 @@ class DeterministicPlanner(Planner):
         goal: str,
         capability_id: str,
     ) -> CapabilityArguments:
-        if (
-            capability_id == OPEN_APPLICATION_CAPABILITY_ID
-            and DeterministicPlanner._normalize_goal(goal) == "open calculator"
-        ):
-            return (CapabilityArgument(APPLICATION_ID_ARGUMENT, "calculator"),)
+        application_id = DeterministicPlanner._application_id(goal)
+        if capability_id == OPEN_APPLICATION_CAPABILITY_ID and application_id:
+            return (CapabilityArgument(APPLICATION_ID_ARGUMENT, application_id),)
         return ()
+
+    @staticmethod
+    def _application_id(goal: str) -> str | None:
+        return _APPLICATION_IDS_BY_COMMAND.get(
+            DeterministicPlanner._normalize_goal(goal)
+        )
 
     @staticmethod
     def _normalize_goal(goal: str) -> str:

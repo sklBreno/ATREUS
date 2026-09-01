@@ -216,11 +216,14 @@ def test_core_does_not_execute_unrelated_command() -> None:
     assert result.execution_results == ()
 
 
-def test_core_opens_calculator_through_complete_controlled_pipeline() -> None:
+@pytest.mark.parametrize("application_id", ("calculator", "notepad", "spotify"))
+def test_core_opens_application_through_complete_controlled_pipeline(
+    application_id: str,
+) -> None:
     controller = RecordingApplicationController(process_id=2468)
     core, _ = build_core(application_controller=controller)
 
-    result = core.handle_request(make_request("open calculator"))
+    result = core.handle_request(make_request(f"open {application_id}"))
 
     assert result.classification.request_type is RequestType.COMMAND
     assert result.decision.outcome is DecisionOutcome.REQUEST_PLANNING
@@ -231,7 +234,7 @@ def test_core_opens_calculator_through_complete_controlled_pipeline() -> None:
     assert tuple(
         (argument.name, argument.value)
         for argument in result.plan.steps[0].arguments
-    ) == (("application_id", "calculator"),)
+    ) == (("application_id", application_id),)
     assert len(result.execution_results) == 1
     assert result.execution_results[0].status is CapabilityExecutionStatus.SUCCEEDED
     assert len(controller.calls) == 1
@@ -239,7 +242,14 @@ def test_core_opens_calculator_through_complete_controlled_pipeline() -> None:
 
 @pytest.mark.parametrize(
     "content",
-    ("open spotify", "shutdown computer", "arbitrary text"),
+    (
+        "open calculator && shutdown",
+        "open notepad && calc",
+        "open spotify && anything",
+        "open calculator please run shutdown",
+        "shutdown computer",
+        "arbitrary text",
+    ),
 )
 def test_core_rejects_unrelated_desktop_commands(content: str) -> None:
     controller = RecordingApplicationController()
