@@ -7,6 +7,7 @@ from uuid import UUID
 from atreus.capability.contracts import CapabilityArguments
 from atreus.context.models import ContextSnapshot
 from atreus.events.models import Event
+from atreus.memory.models import MemorySnapshot
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +30,7 @@ class PlanningRequest:
     goal: str
     constraints: PlanningConstraints
     context: ContextSnapshot
+    memory: MemorySnapshot
 
 
 @dataclass(frozen=True, slots=True)

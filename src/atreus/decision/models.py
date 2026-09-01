@@ -7,6 +7,7 @@ from uuid import UUID
 from atreus.capability.models import CapabilityMetadata
 from atreus.context.models import ContextSnapshot
 from atreus.events.models import Event
+from atreus.memory.models import MemorySnapshot
 from atreus.request_classifier.models import ClassifiedRequest
 from atreus.shared.platform import (
     OperationalState,
@@ -53,6 +54,7 @@ class DecisionInput:
     request: Request
     classification: ClassifiedRequest
     context: ContextSnapshot
+    memory: MemorySnapshot
     platform_state: PlatformStateSnapshot
     user_policy: UserPolicy
     candidate_capabilities: tuple[CapabilityMetadata, ...]

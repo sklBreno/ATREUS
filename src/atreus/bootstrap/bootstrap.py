@@ -1,5 +1,6 @@
 """Production dependency composition for the ATREUS local runtime."""
 
+from datetime import timedelta
 from pathlib import Path
 
 from atreus.ai.unavailable_availability import UnavailableAIAvailabilityProvider
@@ -20,6 +21,8 @@ from atreus.interfaces.configuration import ConfigurationProvider
 from atreus.interfaces.log_writer import LogWriter
 from atreus.logging.event_observer import EventLogObserver
 from atreus.logging.jsonl_writer import JsonLinesLogWriter
+from atreus.memory.models import WorkingMemoryPolicy
+from atreus.memory.working_memory import InMemoryWorkingMemory
 from atreus.planner.models import PlanningConstraints
 from atreus.planner.planner import DeterministicPlanner
 from atreus.request_classifier.classifier import DeterministicRequestClassifier
@@ -134,6 +137,15 @@ class Bootstrap:
         )
         EventLogObserver(log_writer).subscribe(event_bus)
         context_provider = UnavailableContextProvider(self._clock)
+        working_memory = InMemoryWorkingMemory(
+            self._clock,
+            WorkingMemoryPolicy(
+                capacity=configuration.working_memory_capacity,
+                entry_ttl=timedelta(
+                    seconds=configuration.working_memory_entry_ttl_seconds
+                ),
+            ),
+        )
         registry = InMemoryCapabilityRegistry(event_bus)
         capability_runtime = InProcessCapabilityRuntime(
             registry=registry,
@@ -157,6 +169,7 @@ class Bootstrap:
             planner=DeterministicPlanner(registry, self._clock, event_bus),
             capability_runtime=capability_runtime,
             context_provider=context_provider,
+            memory_snapshot_provider=working_memory,
             platform_state=PlatformStateSnapshot(
                 lifecycle_phase="RUNNING",
                 operational_state=OperationalState.ACTIVE,

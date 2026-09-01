@@ -25,6 +25,7 @@ from atreus.interfaces.capability_runtime import CapabilityRuntime
 from atreus.interfaces.context import ContextProvider
 from atreus.interfaces.decision_engine import DecisionEngine
 from atreus.interfaces.event_bus import EventBus
+from atreus.interfaces.memory import MemorySnapshotProvider
 from atreus.interfaces.planner import Planner
 from atreus.interfaces.request_classifier import RequestClassifier
 from atreus.planner.models import Plan, PlanningConstraints, PlanningRequest
@@ -44,6 +45,7 @@ class Core:
         planner: Planner,
         capability_runtime: CapabilityRuntime,
         context_provider: ContextProvider,
+        memory_snapshot_provider: MemorySnapshotProvider,
         platform_state: PlatformStateSnapshot,
         user_policy: UserPolicy,
         planning_constraints: PlanningConstraints,
@@ -59,6 +61,7 @@ class Core:
             planner: Immutable plan creation boundary.
             capability_runtime: Controlled capability invocation boundary.
             context_provider: Current immutable context source.
+            memory_snapshot_provider: Bounded process-local memory view source.
             platform_state: Current immutable Core-owned state snapshot.
             user_policy: Grants and user-control policy for orchestration.
             planning_constraints: Bounded policy for generated plans.
@@ -71,6 +74,7 @@ class Core:
         self._planner = planner
         self._capability_runtime = capability_runtime
         self._context_provider = context_provider
+        self._memory_snapshot_provider = memory_snapshot_provider
         self._platform_state = platform_state
         self._user_policy = user_policy
         self._planning_constraints = planning_constraints
@@ -107,12 +111,15 @@ class Core:
 
             orchestration_step = "context_snapshot"
             context = self._context_provider.current_context()
+            orchestration_step = "working_memory_snapshot"
+            memory = self._memory_snapshot_provider.snapshot()
             orchestration_step = "request_decision"
             decision = self._decision_engine.decide(
                 DecisionInput(
                     request=request,
                     classification=classification,
                     context=context,
+                    memory=memory,
                     platform_state=self._platform_state,
                     user_policy=self._user_policy,
                     candidate_capabilities=(
@@ -142,6 +149,7 @@ class Core:
                         goal=request.content,
                         constraints=self._planning_constraints,
                         context=context,
+                        memory=memory,
                     )
                 )
                 if (

@@ -47,7 +47,8 @@ Request Classifier ──classification──> Core
                          ▼
                     System Layer
 
-Working Memory provides bounded process-local data where explicitly required.
+Working Memory provides bounded process-local snapshots where explicitly
+required.
 Configuration provides validated settings during bootstrap.
 Domain modules publish immutable facts through the Event Bus.
 ```
@@ -151,11 +152,14 @@ metadata and permissions but does not execute plans or grant permissions.
 
 ## Working Memory
 
-Version 1 Memory is bounded, volatile Working Memory for the current process.
+Version 0 Memory is bounded, volatile Working Memory for one composed process.
+Its defaults are 64 entries with a fixed 1800-second lifetime, supplied through
+validated Configuration. A new composition or process restart begins empty.
 
-It may hold short-lived request, decision, plan, and execution context. It does
-not implement Long-Term Memory, Knowledge, Experience Memory, persistent
-conversation context, or learning in Version 1.
+Core captures one immutable `MemorySnapshot` per request and reuses it in
+Decision Engine and Planner inputs. Capability Runtime does not know about
+Memory. Version 0 has no automatic producers, persistence, Long-Term Memory,
+Knowledge Memory, Experience Memory, conversation history, or learning.
 
 ---
 
@@ -302,7 +306,7 @@ Decision Engine
     ├── SUGGEST ───────────────> User interaction boundary
     └── IGNORE ────────────────> No action
 
-Core correlates results, uses Working Memory only when required, publishes
+Core correlates results, captures one stable Working Memory snapshot, publishes
 request lifecycle events, and returns the response.
 ```
 
@@ -321,7 +325,7 @@ Event ownership follows the state owner:
 - Request Classifier owns `RequestClassified`.
 - Decision Engine owns `DecisionMade`.
 - Planner owns `PlanCreated`.
-- Working Memory owns memory-entry lifecycle events.
+- Working Memory V0 publishes no events.
 - Capability Registry owns catalog and availability events.
 - Capability Runtime owns capability execution events.
 - AI Provider owns AI request and availability events.
@@ -349,11 +353,11 @@ Dependencies point toward abstractions and remain acyclic:
 
 # Numeric Policies
 
-Context stabilization, Working Memory capacity, planning limits, and execution
-timeouts use configurable defaults supplied during future implementation.
+Working Memory V0 uses configurable defaults of 64 entries and 1800 seconds per
+entry. Context stabilization, planning limits, and execution timeouts continue
+to use validated configurable policies when implemented.
 
-This architecture intentionally does not define numeric values. Implementations
-must not hardcode policy values that should come from validated configuration.
+Modules must not hardcode values that belong to validated configuration policy.
 
 ---
 

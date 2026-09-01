@@ -19,6 +19,7 @@ from atreus.context.models import (
     ContextType,
 )
 from atreus.events.event_bus import InProcessEventBus
+from atreus.memory.models import MemorySnapshot
 from atreus.planner.exceptions import (
     GoalNotPlannableError,
     InvalidCapabilityReferenceError,
@@ -92,6 +93,7 @@ def make_request(
             require_confirmation,
         ),
         make_context(),
+        MemorySnapshot(NOW, ()),
     )
 
 

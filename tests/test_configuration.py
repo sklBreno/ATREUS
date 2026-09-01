@@ -15,6 +15,8 @@ def test_configuration_uses_platform_defaults() -> None:
     assert configuration.language == "pt-BR"
     assert configuration.debug is True
     assert configuration.log_level == "INFO"
+    assert configuration.working_memory_capacity == 64
+    assert configuration.working_memory_entry_ttl_seconds == 1800
     assert configuration.start_with_windows is True
     assert configuration.always_on is True
 

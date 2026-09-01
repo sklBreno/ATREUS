@@ -9,7 +9,7 @@ from typing import cast
 from atreus.configuration.configuration import Configuration
 from atreus.configuration.exceptions import ConfigurationLoadError
 
-type ConfigurationValue = str | bool
+type ConfigurationValue = str | bool | int
 
 _ENVIRONMENT_VARIABLES = {
     "app_name": "ATREUS_APP_NAME",
@@ -17,11 +17,19 @@ _ENVIRONMENT_VARIABLES = {
     "language": "ATREUS_LANGUAGE",
     "debug": "ATREUS_DEBUG",
     "log_level": "ATREUS_LOG_LEVEL",
+    "working_memory_capacity": "ATREUS_WORKING_MEMORY_CAPACITY",
+    "working_memory_entry_ttl_seconds": (
+        "ATREUS_WORKING_MEMORY_ENTRY_TTL_SECONDS"
+    ),
     "start_with_windows": "ATREUS_START_WITH_WINDOWS",
     "always_on": "ATREUS_ALWAYS_ON",
 }
 
 _BOOLEAN_FIELDS = {"debug", "start_with_windows", "always_on"}
+_INTEGER_FIELDS = {
+    "working_memory_capacity",
+    "working_memory_entry_ttl_seconds",
+}
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 _FALSE_VALUES = {"0", "false", "no", "off"}
 
@@ -144,7 +152,15 @@ class ConfigurationLoader:
     @staticmethod
     def _parse_value(field_name: str, value: str) -> ConfigurationValue:
         if field_name not in _BOOLEAN_FIELDS:
-            return value
+            if field_name not in _INTEGER_FIELDS:
+                return value
+            try:
+                return int(value)
+            except ValueError as error:
+                environment_name = _ENVIRONMENT_VARIABLES[field_name]
+                raise ConfigurationLoadError(
+                    f"Invalid integer value for {environment_name}: {value!r}."
+                ) from error
 
         normalized_value = value.strip().lower()
         if normalized_value in _TRUE_VALUES:

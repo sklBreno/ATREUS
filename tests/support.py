@@ -17,7 +17,9 @@ from atreus.interfaces.capability import Capability
 from atreus.interfaces.clock import Clock
 from atreus.interfaces.context import ContextProvider
 from atreus.interfaces.log_writer import LogWriter
+from atreus.interfaces.memory import MemorySnapshotProvider
 from atreus.logging.models import StructuredLogRecord
+from atreus.memory.models import MemorySnapshot
 from atreus.system.models import (
     ApplicationInstance,
     ApplicationLaunchRequest,
@@ -49,6 +51,20 @@ class StaticContextProvider(ContextProvider):
 
     def current_context(self) -> ContextSnapshot:
         """Return the configured snapshot."""
+        self.call_count += 1
+        return self._snapshot
+
+
+class StaticMemorySnapshotProvider(MemorySnapshotProvider):
+    """Return one immutable Working Memory snapshot."""
+
+    def __init__(self, snapshot: MemorySnapshot | None = None) -> None:
+        """Initialize the provider with an empty or explicit snapshot."""
+        self._snapshot = snapshot or MemorySnapshot(NOW, ())
+        self.call_count = 0
+
+    def snapshot(self) -> MemorySnapshot:
+        """Return the configured snapshot while recording the read."""
         self.call_count += 1
         return self._snapshot
 

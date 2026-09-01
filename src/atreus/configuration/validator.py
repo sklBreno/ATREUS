@@ -4,12 +4,14 @@ from collections.abc import Mapping
 
 from atreus.configuration.exceptions import ConfigurationValidationError
 
-_EXPECTED_TYPES: dict[str, type[str] | type[bool]] = {
+_EXPECTED_TYPES: dict[str, type[str] | type[bool] | type[int]] = {
     "app_name": str,
     "version": str,
     "language": str,
     "debug": bool,
     "log_level": str,
+    "working_memory_capacity": int,
+    "working_memory_entry_ttl_seconds": int,
     "start_with_windows": bool,
     "always_on": bool,
 }
@@ -34,6 +36,7 @@ class ConfigurationValidator:
         self._validate_types(values)
         self._validate_strings(values)
         self._validate_log_level(values)
+        self._validate_positive_integers(values)
 
     @staticmethod
     def _validate_fields(values: Mapping[str, object]) -> None:
@@ -77,3 +80,15 @@ class ConfigurationValidator:
         log_level = values["log_level"]
         if isinstance(log_level, str) and log_level not in _LOG_LEVELS:
             raise ConfigurationValidationError(f"Unsupported log level: {log_level!r}.")
+
+    @staticmethod
+    def _validate_positive_integers(values: Mapping[str, object]) -> None:
+        for field_name in (
+            "working_memory_capacity",
+            "working_memory_entry_ttl_seconds",
+        ):
+            value = values[field_name]
+            if isinstance(value, int) and value <= 0:
+                raise ConfigurationValidationError(
+                    f"Configuration field '{field_name}' must be positive."
+                )
