@@ -4,7 +4,7 @@
 
 **Version:** 1.1
 
-**Last Updated:** 2026-09-01
+**Last Updated:** 2026-09-02
 
 ---
 
@@ -219,6 +219,20 @@ commands remain local and make no AI request. A valid interpretation returns to
 Decision Engine and requires confirmation; it never reaches Planner,
 Capability Runtime, or System Layer.
 
+## Interactive Confirmation
+
+Interactive Confirmation V0 owns one expiring, single-use, process-local
+authorization slot per runtime composition. It supports only validated
+AI-originated `OPEN_APPLICATION` actions. PT-BR is the default interaction
+language, English is secondary, and ambiguous language resolves to PT-BR.
+
+Core coordinates the confirmation flow through an injected coordinator. The
+foreground interface renders a structured prompt from approved identifiers.
+An exact acceptance returns to Decision Engine, then Planner receives a typed
+approved action. Capability Runtime and System Layer remain independent and
+retain their existing enforcement responsibilities. Working Memory does not
+store confirmation state, and V0 publishes no confirmation-specific events.
+
 ---
 
 # Operational State
@@ -315,7 +329,11 @@ Decision Engine
     │                                ▼
     │                    Core ──> Decision Engine
     │                                └── ASK_FOR_CONFIRMATION in V0
-    ├── ASK_FOR_CONFIRMATION ──> User interaction boundary
+    ├── ASK_FOR_CONFIRMATION ──> Confirmation Coordinator
+    │                                │ structured prompt and later exact input
+    │                                ▼
+    │                    Core ──> Decision Engine
+    │                                └── REQUEST_PLANNING after acceptance
     ├── SUGGEST ───────────────> User interaction boundary
     └── IGNORE ────────────────> No action
 
@@ -342,6 +360,7 @@ Event ownership follows the state owner:
 - Capability Registry owns catalog and availability events.
 - Capability Runtime owns capability execution events.
 - AI Provider owns AI request and availability events.
+- Interactive Confirmation V0 publishes no domain events.
 - System Layer owns approved operating-system observation events.
 
 Core reacts to domain events but does not republish them under the same meaning.

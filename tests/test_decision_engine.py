@@ -1,6 +1,7 @@
 """Behavior tests for the deterministic Decision Engine."""
 
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
+from datetime import timedelta
 from uuid import uuid4
 
 import pytest
@@ -14,6 +15,12 @@ from atreus.capability.models import (
     CapabilityAvailability,
     CapabilityAvailabilityState,
     CapabilityMetadata,
+)
+from atreus.confirmation.models import (
+    ConfirmationAction,
+    ConfirmationResolution,
+    ConfirmationResolutionStatus,
+    PendingConfirmation,
 )
 from atreus.context.models import (
     ContextSignalStatus,
@@ -33,6 +40,7 @@ from atreus.decision.models import (
     UserPolicy,
 )
 from atreus.events.event_bus import InProcessEventBus
+from atreus.interaction.models import InteractionLanguage
 from atreus.memory.models import MemorySnapshot
 from atreus.request_classifier.models import ClassifiedRequest, RequestType
 from atreus.shared.platform import (
@@ -41,6 +49,7 @@ from atreus.shared.platform import (
     PlatformStateSnapshot,
 )
 from atreus.shared.request import Request
+from atreus.system.models import ApplicationIdentifier
 from tests.support import NOW
 
 
@@ -48,6 +57,7 @@ def make_metadata(
     identifier: str,
     *,
     permissions: tuple[str, ...] = (),
+    available: bool = True,
 ) -> CapabilityMetadata:
     """Create available capability metadata for decision tests."""
     return CapabilityMetadata(
@@ -57,6 +67,8 @@ def make_metadata(
         permissions=permissions,
         availability=CapabilityAvailability(
             CapabilityAvailabilityState.AVAILABLE
+            if available
+            else CapabilityAvailabilityState.UNAVAILABLE
         ),
         dependencies=(),
         requires_ai=False,
@@ -77,10 +89,43 @@ def make_input(
     operational_state: OperationalState = OperationalState.ACTIVE,
     performance_profile: PerformanceProfile = PerformanceProfile.BALANCED,
     interpretation: RequestInterpretation | None = None,
+    confirmation_status: ConfirmationResolutionStatus | None = None,
 ) -> DecisionInput:
     """Create one coherent immutable DecisionInput."""
     request_id = uuid4()
     request = Request(request_id, content, "text", NOW)
+    confirmation: ConfirmationResolution | None = None
+    if confirmation_status is not None:
+        pending = (
+            None
+            if confirmation_status
+            in {
+                ConfirmationResolutionStatus.NOT_APPLICABLE,
+                ConfirmationResolutionStatus.NO_PENDING,
+            }
+            else PendingConfirmation(
+                uuid4(),
+                uuid4(),
+                ConfirmationAction(
+                    AIIntent.OPEN_APPLICATION,
+                    "application.open",
+                    ApplicationIdentifier.CALCULATOR,
+                ),
+                InteractionLanguage.PT_BR,
+                NOW - timedelta(seconds=1),
+                (
+                    NOW
+                    if confirmation_status is ConfirmationResolutionStatus.EXPIRED
+                    else NOW + timedelta(seconds=120)
+                ),
+            )
+        )
+        confirmation = ConfirmationResolution(
+            request_id,
+            confirmation_status,
+            pending,
+            NOW,
+        )
     return DecisionInput(
         request=request,
         classification=ClassifiedRequest(
@@ -112,6 +157,7 @@ def make_input(
         ),
         candidate_capabilities=candidates,
         interpretation=interpretation,
+        confirmation=confirmation,
     )
 
 
@@ -251,10 +297,23 @@ def test_question_delegates_only_to_explicit_allowed_service() -> None:
     assert decision.target == "ai.default"
 
 
-def test_eligible_natural_language_request_delegates_to_interpreter() -> None:
+@pytest.mark.parametrize(
+    "content",
+    (
+        "abre a calculadora pra mim",
+        "quero fazer umas contas",
+        "pode abrir o bloco de notas para eu escrever",
+        "could you open the calculator?",
+        "I want to do some calculations",
+        "please open notepad",
+    ),
+)
+def test_eligible_natural_language_request_delegates_to_interpreter(
+    content: str,
+) -> None:
     decision = make_engine().decide(
         make_input(
-            content="Please open calculator for me",
+            content=content,
             request_type=RequestType.INTENTION,
             confidence=0.25,
             candidates=(
@@ -414,6 +473,7 @@ def test_disabled_interruption_returns_suggestion_without_execution() -> None:
     )
 
     assert decision.outcome is DecisionOutcome.SUGGEST
+    assert decision.reason_code == "interruption_disabled_by_user_policy"
     assert decision.target == "system.snapshot"
 
 
@@ -578,3 +638,154 @@ def test_performance_profile_can_limit_non_command_work() -> None:
 
     assert decision.outcome is DecisionOutcome.SUGGEST
     assert decision.reason_code == "performance_profile_limits_non_command_work"
+
+
+def test_accepted_confirmation_returns_planning_after_current_revalidation() -> None:
+    capability = make_metadata(
+        "application.open",
+        permissions=("application.control",),
+    )
+
+    decision = make_engine().decide(
+        make_input(
+            content="sim",
+            candidates=(capability,),
+            permission_grants=("application.control",),
+            confirmation_status=ConfirmationResolutionStatus.ACCEPTED,
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.REQUEST_PLANNING
+    assert decision.target == "application.open"
+    assert decision.reason_code == "confirmed_action_requires_explicit_plan"
+
+
+@pytest.mark.parametrize(
+    ("status", "reason_code"),
+    (
+        (ConfirmationResolutionStatus.NO_PENDING, "confirmation_not_pending"),
+        (
+            ConfirmationResolutionStatus.REJECTED,
+            "confirmation_rejected_by_user",
+        ),
+        (ConfirmationResolutionStatus.INVALIDATED, "confirmation_invalidated"),
+        (ConfirmationResolutionStatus.EXPIRED, "confirmation_expired"),
+    ),
+)
+def test_non_accepted_confirmation_statuses_return_safe_ignore(
+    status: ConfirmationResolutionStatus,
+    reason_code: str,
+) -> None:
+    decision = make_engine().decide(
+        make_input(content="sim", confirmation_status=status)
+    )
+
+    assert decision.outcome is DecisionOutcome.IGNORE
+    assert decision.reason_code == reason_code
+
+
+@pytest.mark.parametrize(
+    ("available", "permission_grants", "operational_state", "reason_code"),
+    (
+        (
+            False,
+            ("application.control",),
+            OperationalState.ACTIVE,
+            "confirmed_target_unavailable",
+        ),
+        (True, (), OperationalState.ACTIVE, "required_permission_missing"),
+        (
+            True,
+            ("application.control",),
+            OperationalState.STANDBY,
+            "operational_state_standby",
+        ),
+    ),
+)
+def test_accepted_confirmation_does_not_freeze_current_execution_preconditions(
+    available: bool,
+    permission_grants: tuple[str, ...],
+    operational_state: OperationalState,
+    reason_code: str,
+) -> None:
+    capability = make_metadata(
+        "application.open",
+        permissions=("application.control",),
+        available=available,
+    )
+
+    decision = make_engine().decide(
+        make_input(
+            content="yes",
+            candidates=(capability,),
+            permission_grants=permission_grants,
+            operational_state=operational_state,
+            confirmation_status=ConfirmationResolutionStatus.ACCEPTED,
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.IGNORE
+    assert decision.reason_code == reason_code
+
+
+def test_not_applicable_resolution_cannot_enter_confirmation_decision() -> None:
+    with pytest.raises(InconsistentDecisionInputError):
+        make_engine().decide(
+            make_input(
+                confirmation_status=ConfirmationResolutionStatus.NOT_APPLICABLE
+            )
+        )
+
+
+def test_accepted_confirmation_requires_response_request_correlation() -> None:
+    decision_input = make_input(
+        confirmation_status=ConfirmationResolutionStatus.ACCEPTED
+    )
+    assert decision_input.confirmation is not None
+    invalid_resolution = replace(
+        decision_input.confirmation,
+        response_request_id=uuid4(),
+    )
+
+    with pytest.raises(InconsistentDecisionInputError):
+        make_engine().decide(
+            replace(decision_input, confirmation=invalid_resolution)
+        )
+
+
+def test_accepted_confirmation_rejects_original_request_replay() -> None:
+    decision_input = make_input(
+        confirmation_status=ConfirmationResolutionStatus.ACCEPTED
+    )
+    assert decision_input.confirmation is not None
+    assert decision_input.confirmation.pending is not None
+    replayed_pending = replace(
+        decision_input.confirmation.pending,
+        original_request_id=decision_input.request.request_id,
+    )
+    invalid_resolution = replace(
+        decision_input.confirmation,
+        pending=replayed_pending,
+    )
+
+    with pytest.raises(InconsistentDecisionInputError):
+        make_engine().decide(
+            replace(decision_input, confirmation=invalid_resolution)
+        )
+
+
+def test_accepted_confirmation_rejects_expired_resolution() -> None:
+    decision_input = make_input(
+        confirmation_status=ConfirmationResolutionStatus.ACCEPTED
+    )
+    assert decision_input.confirmation is not None
+    assert decision_input.confirmation.pending is not None
+    invalid_resolution = replace(
+        decision_input.confirmation,
+        resolved_at=decision_input.confirmation.pending.expires_at,
+    )
+
+    with pytest.raises(InconsistentDecisionInputError):
+        make_engine().decide(
+            replace(decision_input, confirmation=invalid_resolution)
+        )

@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from uuid import UUID
 
+from atreus.confirmation.models import ConfirmationPrompt
 from atreus.decision.models import Decision, DecisionOutcome
 from atreus.events.models import Event
 from atreus.execution.models import (
@@ -47,3 +48,4 @@ class CoreRequestResult:
     decision: Decision
     plan: Plan | None
     execution_results: tuple[CapabilityExecutionResult, ...]
+    confirmation_prompt: ConfirmationPrompt | None = None

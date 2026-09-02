@@ -4,7 +4,7 @@
 
 **Version:** 1.1
 
-**Last Updated:** 2026-09-01
+**Last Updated:** 2026-09-02
 
 ---
 
@@ -143,6 +143,13 @@ Capability Catalog availability before returning `RequestInterpretation`.
 The interpretation is non-executable. Core submits it to a second Decision
 Engine evaluation, which requires user confirmation in V0. Planner, Capability
 Runtime, and System Layer never receive the interpretation.
+
+Interactive Confirmation is a separate local boundary. AI Provider does not
+parse yes/no input, detect the interaction language, render confirmation text,
+store pending authorization, or observe the eventual result. Exact confirmation
+responses make zero AI requests. After acceptance, Planner receives only a
+typed locally approved `ConfirmationAction`, not `RequestInterpretation` or raw
+provider output.
 
 ---
 

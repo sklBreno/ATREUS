@@ -4,7 +4,7 @@
 
 **Version:** 1.1
 
-**Last Updated:** 2026-09-01
+**Last Updated:** 2026-09-02
 
 ---
 
@@ -67,6 +67,8 @@ The engine accepts an immutable `DecisionInput` containing:
   capabilities, if any.
 - `interpretation`: Optional locally validated `RequestInterpretation` supplied
   only for the second AI-assisted evaluation.
+- `confirmation`: Optional `ConfirmationResolution` supplied for a later
+  foreground response request.
 
 The Core assembles this input through module interfaces. The Decision Engine
 does not query those modules directly. Version 0 decision policy receives but
@@ -121,6 +123,19 @@ provided explicitly in the second `DecisionInput`. The second evaluation never
 delegates again and returns `ASK_FOR_CONFIRMATION` for a valid available and
 permitted target. It never returns `EXECUTE` or `REQUEST_PLANNING` from the
 interpretation.
+
+Interactive Confirmation V0 adds a separate later evaluation. `ACCEPTED`
+confirmation must correlate to the response request and preserve an approved
+`OPEN_APPLICATION` action. Decision Engine revalidates current capability
+availability, user restrictions, configured permission policy, and operational
+state, then returns `REQUEST_PLANNING`. It never returns `EXECUTE` because of a
+confirmation. `NO_PENDING`, `REJECTED`, `INVALIDATED`, and `EXPIRED` return a
+safe `IGNORE` decision.
+
+These policy checks do not replace authoritative enforcement. Capability
+Runtime still enforces permission grants, dependencies, and availability at
+invocation time, and System Layer reinforces its boundary. Confirmation is not
+a permission grant and does not freeze current conditions.
 
 ---
 
@@ -349,6 +364,9 @@ Tests must cover:
 - Decision and event immutability.
 - Deterministic outcomes for identical inputs.
 - Absence of execution side effects.
+- Accepted confirmation revalidation and `REQUEST_PLANNING` outcome.
+- Safe non-executing outcomes for rejected, invalidated, expired, replayed, and
+  uncorrelated confirmation input.
 
 ---
 

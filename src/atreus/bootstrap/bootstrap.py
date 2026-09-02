@@ -12,12 +12,14 @@ from atreus.capability.open_application import OpenApplicationCapability
 from atreus.capability.registry import InMemoryCapabilityRegistry
 from atreus.configuration.configuration import Configuration
 from atreus.configuration.configuration_manager import ConfigurationManager
+from atreus.confirmation.coordinator import InMemoryConfirmationCoordinator
 from atreus.context.unavailable_context import UnavailableContextProvider
 from atreus.core.core import Core
 from atreus.decision.decision_engine import DeterministicDecisionEngine
 from atreus.decision.models import DecisionPolicy, UserPolicy
 from atreus.events.event_bus import InProcessEventBus
 from atreus.execution.runtime import InProcessCapabilityRuntime
+from atreus.interaction.language import DeterministicInteractionLanguageResolver
 from atreus.interfaces.ai_provider import AIProvider
 from atreus.interfaces.application_controller import ApplicationController
 from atreus.interfaces.clock import Clock
@@ -153,6 +155,10 @@ class Bootstrap:
                 ),
             ),
         )
+        confirmation_coordinator = InMemoryConfirmationCoordinator(
+            self._clock,
+            timedelta(seconds=configuration.confirmation_ttl_seconds),
+        )
         registry = InMemoryCapabilityRegistry(event_bus)
         ai_provider = self._compose_ai_provider(configuration, event_bus)
         capability_runtime = InProcessCapabilityRuntime(
@@ -216,6 +222,10 @@ class Bootstrap:
                 require_confirmation=False,
             ),
             execution_timeout_seconds=None,
+            confirmation_coordinator=confirmation_coordinator,
+            interaction_language_resolver=(
+                DeterministicInteractionLanguageResolver()
+            ),
             request_interpreter=request_interpreter,
         )
         return InteractiveRuntime(core, self._clock), event_bus

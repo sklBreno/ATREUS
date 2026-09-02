@@ -1,6 +1,7 @@
 """Behavior and integration tests for the Core Phase B pipeline."""
 
-from uuid import uuid4
+from datetime import timedelta
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -15,6 +16,12 @@ from atreus.ai.models import (
 from atreus.capability.open_application import OpenApplicationCapability
 from atreus.capability.registry import InMemoryCapabilityRegistry
 from atreus.capability.system_snapshot import SystemSnapshotCapability
+from atreus.confirmation.coordinator import InMemoryConfirmationCoordinator
+from atreus.confirmation.models import (
+    ConfirmationAction,
+    ConfirmationResolution,
+    PendingConfirmation,
+)
 from atreus.context.models import (
     ContextSignalStatus,
     ContextSnapshot,
@@ -46,9 +53,12 @@ from atreus.execution.models import (
     CapabilityInvocation,
 )
 from atreus.execution.runtime import InProcessCapabilityRuntime
+from atreus.interaction.language import DeterministicInteractionLanguageResolver
+from atreus.interaction.models import InteractionLanguage
 from atreus.interfaces.application_controller import ApplicationController
 from atreus.interfaces.capability import Capability
 from atreus.interfaces.capability_runtime import CapabilityRuntime
+from atreus.interfaces.confirmation import ConfirmationCoordinator
 from atreus.interfaces.context import ContextProvider
 from atreus.interfaces.decision_engine import DecisionEngine
 from atreus.interfaces.memory import MemorySnapshotProvider
@@ -120,6 +130,7 @@ def build_core(
     memory_snapshot_provider: MemorySnapshotProvider | None = None,
     request_interpreter: RequestInterpreter | None = None,
     decision_engine: DecisionEngine | None = None,
+    confirmation_coordinator: ConfirmationCoordinator | None = None,
 ) -> tuple[Core, InProcessEventBus]:
     """Compose the complete controlled Phase B pipeline for tests."""
     event_bus = InProcessEventBus()
@@ -190,6 +201,16 @@ def build_core(
             require_confirmation=require_confirmation,
         ),
         execution_timeout_seconds=None,
+        confirmation_coordinator=(
+            confirmation_coordinator
+            or InMemoryConfirmationCoordinator(
+                clock,
+                timedelta(seconds=120),
+            )
+        ),
+        interaction_language_resolver=(
+            DeterministicInteractionLanguageResolver()
+        ),
         request_interpreter=request_interpreter,
     )
     return core, event_bus
@@ -215,6 +236,31 @@ class RecordingRequestInterpreter(RequestInterpreter):
             "calculator",
             0.9,
         )
+
+
+class FailingConfirmationCoordinator(ConfirmationCoordinator):
+    """Raise a private structural failure before request decision."""
+
+    def begin(
+        self,
+        original_request_id: UUID,
+        action: ConfirmationAction,
+        language: InteractionLanguage,
+    ) -> PendingConfirmation:
+        """Reject creation outside this failure test."""
+        raise AssertionError("Confirmation creation is not expected.")
+
+    def resolve(
+        self,
+        response_request_id: UUID,
+        content: str,
+    ) -> ConfirmationResolution:
+        """Raise a private coordinator failure."""
+        raise RuntimeError("private confirmation state detail")
+
+    def clear(self) -> bool:
+        """Report an already empty test boundary."""
+        return False
 
 
 class RecordingTwoPhaseDecisionEngine(DecisionEngine):
@@ -366,6 +412,13 @@ def build_context_tracking_core(
         user_policy=UserPolicy((), (), True, False),
         planning_constraints=PlanningConstraints(None, (), 1, None, False),
         execution_timeout_seconds=None,
+        confirmation_coordinator=InMemoryConfirmationCoordinator(
+            FixedClock(),
+            timedelta(seconds=120),
+        ),
+        interaction_language_resolver=(
+            DeterministicInteractionLanguageResolver()
+        ),
     )
     return core, decision_engine, planner, runtime, event_bus
 
@@ -653,6 +706,40 @@ def test_core_reuses_context_and_memory_across_both_decisions() -> None:
     assert len(interpreter.requests) == 1
 
 
+def test_confirmation_flow_captures_context_and_memory_once_per_request() -> None:
+    interpreter = RecordingRequestInterpreter()
+    context_provider = make_context_provider()
+    memory_provider = StaticMemorySnapshotProvider()
+    controller = RecordingApplicationController()
+    core, _ = build_core(
+        application_controller=controller,
+        context_provider=context_provider,
+        memory_snapshot_provider=memory_provider,
+        request_interpreter=interpreter,
+        user_policy=UserPolicy(
+            ("application.control",),
+            (),
+            True,
+            True,
+            REQUEST_INTERPRETER_SERVICE_ID,
+        ),
+    )
+
+    pending = core.handle_request(
+        make_request("Please open calculator for me")
+    )
+    accepted = core.handle_request(make_request("yes"))
+
+    assert pending.confirmation_prompt is not None
+    assert accepted.execution_results[0].status is (
+        CapabilityExecutionStatus.SUCCEEDED
+    )
+    assert context_provider.call_count == 2
+    assert memory_provider.call_count == 2
+    assert len(interpreter.requests) == 1
+    assert len(controller.calls) == 1
+
+
 @pytest.mark.parametrize("content", ("open calculator", "open notepad"))
 def test_core_deterministic_application_commands_make_zero_ai_calls(
     content: str,
@@ -705,6 +792,25 @@ def test_interpreter_failure_is_sanitized_and_never_executes() -> None:
     assert len(errors) == 1
     assert errors[0].error_type == "InvalidRequestInterpretationError"
     assert private_detail not in repr(errors[0])
+
+
+def test_confirmation_coordinator_failure_is_sanitized_before_execution() -> None:
+    controller = RecordingApplicationController()
+    core, event_bus = build_core(
+        application_controller=controller,
+        confirmation_coordinator=FailingConfirmationCoordinator(),
+    )
+    errors: list[ErrorOccurred] = []
+    event_bus.subscribe(ErrorOccurred, errors.append)
+
+    with pytest.raises(RuntimeError, match="private confirmation"):
+        core.handle_request(make_request("open calculator"))
+
+    assert len(errors) == 1
+    assert errors[0].orchestration_step == "confirmation_resolution"
+    assert errors[0].error_type == "RuntimeError"
+    assert "private confirmation state detail" not in repr(errors[0])
+    assert controller.calls == []
 
 
 @pytest.mark.parametrize(

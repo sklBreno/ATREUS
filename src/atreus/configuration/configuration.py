@@ -25,6 +25,7 @@ class Configuration:
     ai_enabled: bool = False
     ai_model: str = ""
     ai_timeout_seconds: int = 30
+    confirmation_ttl_seconds: int = 120
 
     # System behavior
     start_with_windows: bool = True

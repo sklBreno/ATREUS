@@ -4,7 +4,7 @@
 
 **Version:** 1.2
 
-**Last Updated:** 2026-09-01
+**Last Updated:** 2026-09-02
 
 ---
 
@@ -169,20 +169,21 @@ Core then coordinates this deterministic Version 1 sequence:
 1. Receive validated Configuration and composed module interfaces.
 2. Initialize Event Bus.
 3. Initialize bounded Working Memory.
-4. Initialize System Layer adapters.
-5. Initialize the configured AI Provider and bounded Request Interpreter, if
+4. Initialize the process-local Interactive Confirmation coordinator.
+5. Initialize System Layer adapters.
+6. Initialize the configured AI Provider and bounded Request Interpreter, if
    available.
-6. Initialize Capability Registry.
-7. Initialize Capability Runtime and load trusted local capabilities.
-8. Seal Capability Registry after dependency validation.
-9. Initialize Context Engine.
-10. Initialize Request Classifier.
-11. Initialize Decision Engine.
-12. Initialize Planner.
-13. Register event subscriptions.
-14. Establish the configured initial operational state and performance profile.
-15. Start approved background observation.
-16. Begin accepting user requests.
+7. Initialize Capability Registry.
+8. Initialize Capability Runtime and load trusted local capabilities.
+9. Seal Capability Registry after dependency validation.
+10. Initialize Context Engine.
+11. Initialize Request Classifier.
+12. Initialize Decision Engine.
+13. Initialize Planner.
+14. Register event subscriptions.
+15. Establish the configured initial operational state and performance profile.
+16. Start approved background observation.
+17. Begin accepting user requests.
 
 No module reads raw configuration sources during this sequence.
 
@@ -258,6 +259,19 @@ Capability Catalog view. The second V0 decision is non-executable and requires
 confirmation. Core does not loop, interpret provider output, or forward the
 interpretation to Planner or Capability Runtime.
 
+When the second evaluation returns `ASK_FOR_CONFIRMATION`, Core creates one
+typed `ConfirmationAction` and asks the injected `ConfirmationCoordinator` to
+own it. The returned `ConfirmationPrompt` contains only approved structured
+identifiers, expiration, and interaction language. The foreground interface
+renders the prompt; Core does not produce translated sentences.
+
+A later response is a new request with its own single Context and Memory
+snapshots. Core resolves it through the coordinator before any AI delegation.
+An accepted single-use resolution returns to Decision Engine and may produce
+`REQUEST_PLANNING`; it never authorizes direct `EXECUTE`. Core passes only the
+approved `ConfirmationAction` to Planner. Rejected, invalidated, expired, or
+unmatched confirmation tokens complete safely without planning or execution.
+
 ---
 
 # Plan Coordination
@@ -319,6 +333,8 @@ Core communicates through interfaces with:
 - System Layer services.
 - AI Provider.
 - Request Interpreter.
+- Confirmation Coordinator.
+- Interaction Language Resolver.
 - Capability Registry and Capability Catalog.
 - Capability Runtime.
 - Context Provider and Context Engine lifecycle contract.
@@ -402,6 +418,9 @@ Core tests must cover:
 - AI Provider unavailable behavior.
 - One bounded interpretation call, second-decision identity preservation, and
   mandatory confirmation.
+- Single-use confirmation resolution, replay prevention, and planning only
+  after accepted Decision Engine reevaluation.
+- One Context and Memory snapshot for each initial or response request.
 - AI interpretation failure without planning or capability execution.
 - Module failure isolation.
 - Core-owned event publication.

@@ -20,6 +20,7 @@ def test_configuration_uses_platform_defaults() -> None:
     assert configuration.ai_enabled is False
     assert configuration.ai_model == ""
     assert configuration.ai_timeout_seconds == 30
+    assert configuration.confirmation_ttl_seconds == 120
     assert configuration.start_with_windows is True
     assert configuration.always_on is True
 

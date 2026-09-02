@@ -4,7 +4,7 @@
 
 **Date:** 2026-07-02
 
-**Last Updated:** 2026-09-01
+**Last Updated:** 2026-09-02
 
 ---
 
@@ -51,6 +51,18 @@ most once and submits its locally validated, non-executable interpretation to a
 second Decision Engine evaluation. A valid V0 interpretation requires user
 confirmation and never directly invokes Planner, Capability Runtime, or System
 Layer.
+
+Interactive Confirmation V0 completes that user-control path with one
+process-local, expiring, single-use pending action. ATREUS is PT-BR first and
+supports English as the secondary interaction language; ambiguous interaction
+language defaults to PT-BR. Language selection and exact yes/no parsing are
+deterministic and do not use AI.
+
+An accepted response is a new request and returns to Decision Engine. The
+Decision Engine revalidates current policy and returns `REQUEST_PLANNING`, never
+direct execution. Planner receives a typed approved action rather than raw AI
+output or confirmation text. Capability Runtime and System Layer retain
+authoritative enforcement, and confirmation never creates a permission grant.
 
 ---
 
@@ -173,6 +185,8 @@ The hybrid model provides:
 - Explicit planning for supported high-level goals.
 - Optional AI use for requests that benefit from it.
 - Mandatory confirmation for V0 AI interpretations before any future action.
+- Single-use explicit user control with safe rejection, invalidation,
+  expiration, and replay behavior.
 - Separate handling for constrained tasks and conversations.
 - Reduced dependency on language models.
 - Clear ownership between classification, decision, orchestration, planning,

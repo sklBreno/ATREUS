@@ -4,7 +4,7 @@
 
 **Version:** 1.0
 
-**Last Updated:** 2026-09-01
+**Last Updated:** 2026-09-02
 
 ---
 
@@ -61,6 +61,8 @@ The Planner accepts an immutable `PlanningRequest` containing:
 - `constraints`: Explicit immutable planning constraints.
 - `context`: Current context snapshot relevant to planning.
 - `memory`: Stable bounded memory snapshot captured for the request.
+- `confirmation_action`: Optional approved typed action supplied only after a
+  single-use Interactive Confirmation resolution.
 
 The context is the same immutable snapshot captured by Core for the request.
 Planner consumes it as planning input and must not select, refresh, merge, or
@@ -210,10 +212,16 @@ It does not depend on Core, Capability Runtime, System Layer, `MemoryStore`, or
 a concrete AI provider. It consumes only the immutable `MemorySnapshot` data
 contract.
 
-AI Provider V0 does not change this boundary. `RequestInterpretation` is never
-included in `PlanningRequest`, and Core does not invoke Planner as a consequence
-of an AI interpretation. A valid V0 interpretation returns to Decision Engine
-and requires confirmation without creating a plan.
+AI Provider V0 does not place `RequestInterpretation` in `PlanningRequest`. A
+valid interpretation first returns to Decision Engine and creates no plan until
+a later exact confirmation response is accepted and reevaluated. Core then
+supplies only the approved `ConfirmationAction`, never raw AI output or yes/no
+content.
+
+For V0 confirmation, Planner uses the typed action to create
+`application.open(application_id=<approved ApplicationIdentifier>)`. It does
+not reconstruct the target from the response request text. Capability Catalog
+validation and normal planning constraints remain active.
 
 ---
 
@@ -273,6 +281,8 @@ Tests must cover:
 - Plan and step immutability.
 - Event publication without sensitive arguments.
 - Absence of capability execution.
+- Confirmed action planning from typed identifiers without response-text or AI
+  output reconstruction.
 
 ---
 
