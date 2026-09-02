@@ -24,6 +24,7 @@ _ENVIRONMENT_VARIABLES = {
     "ai_enabled": "ATREUS_AI_ENABLED",
     "ai_model": "ATREUS_AI_MODEL",
     "ai_timeout_seconds": "ATREUS_AI_TIMEOUT_SECONDS",
+    "confirmation_ttl_seconds": "ATREUS_CONFIRMATION_TTL_SECONDS",
     "start_with_windows": "ATREUS_START_WITH_WINDOWS",
     "always_on": "ATREUS_ALWAYS_ON",
 }
@@ -38,6 +39,7 @@ _INTEGER_FIELDS = {
     "working_memory_capacity",
     "working_memory_entry_ttl_seconds",
     "ai_timeout_seconds",
+    "confirmation_ttl_seconds",
 }
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 _FALSE_VALUES = {"0", "false", "no", "off"}

@@ -8,7 +8,7 @@
 
 **Owner:** ATREUS Core Team
 
-**Last Updated:** 2026-09-01
+**Last Updated:** 2026-09-02
 
 ---
 
@@ -220,6 +220,7 @@ configuration.permission_grants
 configuration.context_stabilization_policy
 configuration.working_memory_capacity
 configuration.working_memory_entry_ttl_seconds
+configuration.confirmation_ttl_seconds
 configuration.planning_policy
 configuration.execution_policy
 ```
@@ -263,6 +264,19 @@ the existing source priority. Both values must be positive integers.
 Other numeric defaults remain owned by their future implementation
 configuration, validated before use, and injected into the responsible module.
 Modules must not hardcode values that belong to these policies.
+
+# Interactive Confirmation V0 Settings
+
+Configuration exposes `confirmation_ttl_seconds`, default `120`. The value is a
+positive integer and may be overridden by
+`ATREUS_CONFIRMATION_TTL_SECONDS` using the existing process environment over
+`.env` over defaults priority.
+
+Bootstrap converts the validated value into the fixed lifetime used by one
+process-local `InMemoryConfirmationCoordinator` per runtime composition. V0
+does not support dynamic reload, background expiration, or language
+configuration. PT-BR default and English secondary support are stable
+interaction contracts rather than environment-derived locale policy.
 
 # AI Provider V0 Settings
 
@@ -381,6 +395,8 @@ The module must be tested to ensure:
   priority for capacity and entry TTL.
 - Correct AI-disabled default, model requirement, timeout validation, and
   source priority for non-secret AI settings.
+- Correct confirmation TTL default, positive-value validation, and source
+  priority.
 - Absence of `ATREUS_OPENAI_API_KEY` from the Configuration pipeline.
 - Exclusion of secrets from Configuration objects, snapshots, representations,
   events, errors, and logs.

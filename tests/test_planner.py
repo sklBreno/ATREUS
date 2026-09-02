@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 
+from atreus.ai.models import AIIntent
 from atreus.capability.contracts import CapabilityArgument
 from atreus.capability.models import (
     CapabilityAvailability,
@@ -13,6 +14,7 @@ from atreus.capability.models import (
     CapabilityMetadata,
 )
 from atreus.capability.registry import InMemoryCapabilityRegistry
+from atreus.confirmation.models import ConfirmationAction
 from atreus.context.models import (
     ContextSignalStatus,
     ContextSnapshot,
@@ -31,6 +33,7 @@ from atreus.planner.models import (
     PlanningRequest,
 )
 from atreus.planner.planner import DeterministicPlanner
+from atreus.system.models import ApplicationIdentifier
 from tests.support import NOW, FixedClock
 
 
@@ -79,6 +82,7 @@ def make_request(
     maximum_steps: int = 4,
     require_confirmation: bool = False,
     goal: str = "Inspect system status",
+    confirmation_action: ConfirmationAction | None = None,
 ) -> PlanningRequest:
     """Create a bounded planning request."""
     return PlanningRequest(
@@ -94,6 +98,7 @@ def make_request(
         ),
         make_context(),
         MemorySnapshot(NOW, ()),
+        confirmation_action,
     )
 
 
@@ -155,6 +160,35 @@ def test_open_application_plan_contains_allowlisted_argument(
         CapabilityArgument("application_id", application_id),
     )
     assert plan.required_permissions == ("application.control",)
+
+
+def test_confirmed_action_plans_from_typed_target_not_response_text() -> None:
+    registry = InMemoryCapabilityRegistry()
+    registry.register(
+        make_metadata(
+            "application.open",
+            permissions=("application.control",),
+        )
+    )
+    action = ConfirmationAction(
+        AIIntent.OPEN_APPLICATION,
+        "application.open",
+        ApplicationIdentifier.NOTEPAD,
+    )
+
+    plan = make_planner(registry).create_plan(
+        make_request(
+            goal="sim",
+            allowed=("application.open",),
+            maximum_steps=1,
+            confirmation_action=action,
+        )
+    )
+
+    assert plan.steps[0].capability_id == "application.open"
+    assert plan.steps[0].arguments == (
+        CapabilityArgument("application_id", "notepad"),
+    )
 
 
 def test_open_application_fails_outside_planning_allowlist() -> None:

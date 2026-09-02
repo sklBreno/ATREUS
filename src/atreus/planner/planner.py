@@ -13,6 +13,7 @@ from atreus.capability.models import (
     CapabilityAvailabilityState,
     CapabilityMetadata,
 )
+from atreus.confirmation.models import ConfirmationAction
 from atreus.interfaces.capability_registry import CapabilityCatalog
 from atreus.interfaces.clock import Clock
 from atreus.interfaces.event_bus import EventBus
@@ -71,6 +72,7 @@ class DeterministicPlanner(Planner):
         selected_ids = self._select_capability_ids(
             request.goal,
             request.constraints,
+            request.confirmation_action,
         )
         ordered_metadata = self._resolve_capabilities(
             selected_ids,
@@ -92,6 +94,7 @@ class DeterministicPlanner(Planner):
                 arguments=self._capability_arguments(
                     request.goal,
                     metadata.identifier,
+                    request.confirmation_action,
                 ),
                 depends_on=tuple(
                     step_ids[dependency]
@@ -125,7 +128,18 @@ class DeterministicPlanner(Planner):
         self,
         goal: str,
         constraints: PlanningConstraints,
+        confirmation_action: ConfirmationAction | None,
     ) -> tuple[str, ...]:
+        if confirmation_action is not None:
+            allowed = constraints.allowed_capability_ids
+            if (
+                allowed is not None
+                and confirmation_action.capability_id not in allowed
+            ):
+                raise GoalNotPlannableError(
+                    "Confirmed action is outside the planning allowlist."
+                )
+            return (confirmation_action.capability_id,)
         if self._application_id(goal) is not None:
             allowed = constraints.allowed_capability_ids
             if allowed is not None and OPEN_APPLICATION_CAPABILITY_ID not in allowed:
@@ -156,7 +170,19 @@ class DeterministicPlanner(Planner):
     def _capability_arguments(
         goal: str,
         capability_id: str,
+        confirmation_action: ConfirmationAction | None,
     ) -> CapabilityArguments:
+        if confirmation_action is not None:
+            if capability_id != confirmation_action.capability_id:
+                raise InvalidCapabilityReferenceError(
+                    "Confirmed action capability does not match the plan step."
+                )
+            return (
+                CapabilityArgument(
+                    APPLICATION_ID_ARGUMENT,
+                    confirmation_action.target_id.value,
+                ),
+            )
         application_id = DeterministicPlanner._application_id(goal)
         if capability_id == OPEN_APPLICATION_CAPABILITY_ID and application_id:
             return (CapabilityArgument(APPLICATION_ID_ARGUMENT, application_id),)

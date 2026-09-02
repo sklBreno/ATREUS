@@ -5,6 +5,7 @@ from collections.abc import Callable
 from atreus.core.models import CoreRequestResult
 from atreus.decision.models import DecisionOutcome
 from atreus.execution.models import CapabilityExecutionStatus
+from atreus.interaction.models import InteractionLanguage
 from atreus.interfaces.foreground_interface import ForegroundInterface
 from atreus.system.models import ApplicationIdentifier
 
@@ -13,6 +14,18 @@ type InputReader = Callable[[str], str]
 type OutputWriter = Callable[[str], None]
 
 _EXIT_COMMANDS = frozenset({"exit", "quit"})
+_APPLICATION_DISPLAY_NAMES = {
+    InteractionLanguage.PT_BR: {
+        ApplicationIdentifier.CALCULATOR: "Calculadora",
+        ApplicationIdentifier.NOTEPAD: "Bloco de Notas",
+        ApplicationIdentifier.SPOTIFY: "Spotify",
+    },
+    InteractionLanguage.EN_US: {
+        ApplicationIdentifier.CALCULATOR: "Calculator",
+        ApplicationIdentifier.NOTEPAD: "Notepad",
+        ApplicationIdentifier.SPOTIFY: "Spotify",
+    },
+}
 
 
 class InteractiveConsole(ForegroundInterface):
@@ -65,6 +78,14 @@ class InteractiveConsole(ForegroundInterface):
 
     @staticmethod
     def _format_result(result: CoreRequestResult) -> str:
+        prompt = result.confirmation_prompt
+        if prompt is not None:
+            application_name = _APPLICATION_DISPLAY_NAMES[prompt.language][
+                prompt.target_id
+            ]
+            if prompt.language is InteractionLanguage.EN_US:
+                return f"Do you want me to open {application_name}? [yes/no]"
+            return f"Você quer que eu abra a {application_name}? [sim/não]"
         successful_outputs = tuple(
             item
             for execution in result.execution_results

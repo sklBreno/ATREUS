@@ -16,6 +16,10 @@ from atreus.capability.models import (
     CapabilityAvailabilityState,
     CapabilityMetadata,
 )
+from atreus.confirmation.models import (
+    ConfirmationResolution,
+    ConfirmationResolutionStatus,
+)
 from atreus.decision.exceptions import InconsistentDecisionInputError
 from atreus.decision.models import (
     Decision,
@@ -38,7 +42,9 @@ _CONTROLLED_APPLICATION_COMMANDS = frozenset(
 _CONTROLLED_APPLICATION_TARGETS = frozenset(
     target for _, target in OPEN_APPLICATION_COMMAND_TARGETS
 )
-_INTERPRETATION_ACTION_WORDS = frozenset({"launch", "open", "start"})
+_INTERPRETATION_ACTION_WORDS = frozenset(
+    {"abre", "abra", "abrir", "launch", "open", "start"}
+)
 _INTERPRETATION_PROHIBITED_WORDS = frozenset(
     {
         "and",
@@ -59,7 +65,34 @@ _INTERPRETATION_PROHIBITED_WORDS = frozenset(
         "stop",
         "terminal",
         "then",
+        "apagar",
+        "depois",
+        "desligar",
+        "e",
+        "excluir",
+        "fechar",
+        "reiniciar",
+        "rodar",
+        "tambem",
+        "também",
     }
+)
+_INTERPRETATION_TARGET_ALIASES = {
+    "calculator": frozenset(
+        {
+            "calculator",
+            "calculadora",
+            "calculations",
+            "cálculos",
+            "contas",
+        }
+    ),
+    "notepad": frozenset({"notepad", "bloco de notas"}),
+    "spotify": frozenset({"spotify"}),
+}
+_INTERPRETATION_SEMANTIC_CUES = (
+    "do some calculations",
+    "fazer umas contas",
 )
 _SHELL_OPERATOR_MARKERS = (
     "&&",
@@ -157,6 +190,11 @@ class DeterministicDecisionEngine(DecisionEngine):
             if metadata.availability.state
             is CapabilityAvailabilityState.AVAILABLE
         )
+        if decision_input.confirmation is not None:
+            return self._evaluate_confirmation(
+                decision_input,
+                candidates,
+            )
         if decision_input.interpretation is not None:
             return self._evaluate_interpretation(
                 decision_input,
@@ -296,6 +334,90 @@ class DeterministicDecisionEngine(DecisionEngine):
         )
 
     @staticmethod
+    def _evaluate_confirmation(
+        decision_input: DecisionInput,
+        candidates: tuple[CapabilityMetadata, ...],
+    ) -> Decision:
+        confirmation = decision_input.confirmation
+        if confirmation is None:
+            raise InconsistentDecisionInputError(
+                "Confirmation evaluation requires a resolution."
+            )
+        reason_codes = {
+            ConfirmationResolutionStatus.NO_PENDING: "confirmation_not_pending",
+            ConfirmationResolutionStatus.REJECTED: "confirmation_rejected_by_user",
+            ConfirmationResolutionStatus.INVALIDATED: "confirmation_invalidated",
+            ConfirmationResolutionStatus.EXPIRED: "confirmation_expired",
+        }
+        if confirmation.status in reason_codes:
+            return Decision(
+                decision_input.request.request_id,
+                DecisionOutcome.IGNORE,
+                None,
+                reason_codes[confirmation.status],
+            )
+        if confirmation.status is not ConfirmationResolutionStatus.ACCEPTED:
+            raise InconsistentDecisionInputError(
+                "Confirmation resolution is not actionable."
+            )
+        pending = confirmation.pending
+        if pending is None:
+            raise InconsistentDecisionInputError(
+                "Accepted confirmation requires pending action data."
+            )
+        action = pending.action
+        matching = tuple(
+            metadata
+            for metadata in candidates
+            if metadata.identifier == action.capability_id
+        )
+        if (
+            not matching
+            or action.intent_id is not AIIntent.OPEN_APPLICATION
+            or action.capability_id != OPEN_APPLICATION_CAPABILITY_ID
+            or action.target_id.value not in _CONTROLLED_APPLICATION_TARGETS
+        ):
+            return Decision(
+                decision_input.request.request_id,
+                DecisionOutcome.IGNORE,
+                None,
+                "confirmed_target_unavailable",
+            )
+        capability = matching[0]
+        if capability.identifier in decision_input.user_policy.blocked_capability_ids:
+            return Decision(
+                decision_input.request.request_id,
+                DecisionOutcome.IGNORE,
+                None,
+                "capability_blocked_by_user_policy",
+            )
+        if not set(capability.permissions).issubset(
+            decision_input.user_policy.permission_grants
+        ):
+            return Decision(
+                decision_input.request.request_id,
+                DecisionOutcome.IGNORE,
+                None,
+                "required_permission_missing",
+            )
+        if (
+            decision_input.platform_state.operational_state
+            is OperationalState.STANDBY
+        ):
+            return Decision(
+                decision_input.request.request_id,
+                DecisionOutcome.IGNORE,
+                None,
+                "operational_state_standby",
+            )
+        return Decision(
+            decision_input.request.request_id,
+            DecisionOutcome.REQUEST_PLANNING,
+            action.capability_id,
+            "confirmed_action_requires_explicit_plan",
+        )
+
+    @staticmethod
     def _evaluate_interpretation(
         decision_input: DecisionInput,
         candidates: tuple[CapabilityMetadata, ...],
@@ -372,14 +494,25 @@ class DeterministicDecisionEngine(DecisionEngine):
             marker in content for marker in _SHELL_OPERATOR_MARKERS
         ):
             return False
-        words = tuple(re.findall(r"[a-z0-9.]+", content))
+        normalized_content = " ".join(content.split()).strip(" .!?")
+        words = tuple(re.findall(r"[^\W_]+", normalized_content, re.UNICODE))
         if any(word in _INTERPRETATION_PROHIBITED_WORDS for word in words):
             return False
         action_count = sum(word in _INTERPRETATION_ACTION_WORDS for word in words)
         targets = {
-            word for word in words if word in _CONTROLLED_APPLICATION_TARGETS
+            target_id
+            for target_id, aliases in _INTERPRETATION_TARGET_ALIASES.items()
+            if any(
+                alias in words if " " not in alias else alias in normalized_content
+                for alias in aliases
+            )
         }
-        return action_count == 1 and len(targets) == 1
+        semantic_cue = any(
+            cue in normalized_content for cue in _INTERPRETATION_SEMANTIC_CUES
+        )
+        return len(targets) == 1 and (
+            action_count == 1 or (action_count == 0 and semantic_cue)
+        )
 
     @staticmethod
     def _decide_command(
@@ -501,6 +634,40 @@ class DeterministicDecisionEngine(DecisionEngine):
             raise InconsistentDecisionInputError(
                 "Interpretation request identity does not match DecisionInput."
             )
+        confirmation = decision_input.confirmation
+        if interpretation is not None and confirmation is not None:
+            raise InconsistentDecisionInputError(
+                "DecisionInput cannot contain interpretation and confirmation."
+            )
+        if confirmation is not None:
+            DeterministicDecisionEngine._validate_confirmation(
+                decision_input.request.request_id,
+                confirmation,
+            )
+
+    @staticmethod
+    def _validate_confirmation(
+        request_id: UUID,
+        confirmation: ConfirmationResolution,
+    ) -> None:
+        if (
+            not isinstance(confirmation, ConfirmationResolution)
+            or confirmation.response_request_id != request_id
+            or confirmation.status is ConfirmationResolutionStatus.NOT_APPLICABLE
+        ):
+            raise InconsistentDecisionInputError(
+                "Confirmation resolution is inconsistent with DecisionInput."
+            )
+        if confirmation.status is ConfirmationResolutionStatus.ACCEPTED:
+            pending = confirmation.pending
+            if (
+                pending is None
+                or pending.original_request_id == request_id
+                or confirmation.resolved_at >= pending.expires_at
+            ):
+                raise InconsistentDecisionInputError(
+                    "Accepted confirmation correlation or lifetime is invalid."
+                )
 
     @staticmethod
     def _validate_platform_behavior_input(

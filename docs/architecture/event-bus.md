@@ -4,7 +4,7 @@
 
 **Version:** 1.1
 
-**Last Updated:** 2026-09-01
+**Last Updated:** 2026-09-02
 
 ---
 
@@ -106,6 +106,9 @@ Examples:
 - The Capability Runtime owns capability execution events.
 - The AI Provider owns `AIRequestStarted`, `AIRequestCompleted`, and
   `AIRequestFailed`.
+- Interactive Confirmation V0 publishes no domain events. Existing
+  `DecisionMade`, `RequestCompleted`, and sanitized `ErrorOccurred` events
+  describe its request-level effects without raw confirmation content.
 
 The Core must not republish a domain event under the same meaning. Consumers
 that need the event subscribe to its owner through the Event Bus abstraction.

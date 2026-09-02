@@ -3,7 +3,12 @@
 from uuid import UUID, uuid4
 
 from atreus.ai.exceptions import AIProviderException, RequestInterpretationException
-from atreus.ai.models import REQUEST_INTERPRETER_SERVICE_ID
+from atreus.ai.models import REQUEST_INTERPRETER_SERVICE_ID, RequestInterpretation
+from atreus.confirmation.models import (
+    ConfirmationAction,
+    ConfirmationPrompt,
+    ConfirmationResolutionStatus,
+)
 from atreus.context.models import ContextSnapshot
 from atreus.core.exceptions import (
     InconsistentClassificationError,
@@ -24,9 +29,11 @@ from atreus.execution.models import (
 )
 from atreus.interfaces.capability_registry import CapabilityCatalog
 from atreus.interfaces.capability_runtime import CapabilityRuntime
+from atreus.interfaces.confirmation import ConfirmationCoordinator
 from atreus.interfaces.context import ContextProvider
 from atreus.interfaces.decision_engine import DecisionEngine
 from atreus.interfaces.event_bus import EventBus
+from atreus.interfaces.interaction_language import InteractionLanguageResolver
 from atreus.interfaces.memory import MemorySnapshotProvider
 from atreus.interfaces.planner import Planner
 from atreus.interfaces.request_classifier import RequestClassifier
@@ -34,6 +41,7 @@ from atreus.interfaces.request_interpreter import RequestInterpreter
 from atreus.planner.models import Plan, PlanningConstraints, PlanningRequest
 from atreus.shared.platform import PlatformStateSnapshot
 from atreus.shared.request import Request
+from atreus.system.models import ApplicationIdentifier
 
 
 class Core:
@@ -53,6 +61,8 @@ class Core:
         user_policy: UserPolicy,
         planning_constraints: PlanningConstraints,
         execution_timeout_seconds: float | None,
+        confirmation_coordinator: ConfirmationCoordinator,
+        interaction_language_resolver: InteractionLanguageResolver,
         request_interpreter: RequestInterpreter | None = None,
     ) -> None:
         """Initialize Core with explicit runtime contracts.
@@ -70,6 +80,8 @@ class Core:
             user_policy: Grants and user-control policy for orchestration.
             planning_constraints: Bounded policy for generated plans.
             execution_timeout_seconds: Optional injected invocation deadline.
+            confirmation_coordinator: Single-use interactive authorization state.
+            interaction_language_resolver: Deterministic prompt language boundary.
             request_interpreter: Optional bounded AI interpretation boundary.
         """
         self._event_bus = event_bus
@@ -84,6 +96,8 @@ class Core:
         self._user_policy = user_policy
         self._planning_constraints = planning_constraints
         self._execution_timeout_seconds = execution_timeout_seconds
+        self._confirmation_coordinator = confirmation_coordinator
+        self._interaction_language_resolver = interaction_language_resolver
         self._request_interpreter = request_interpreter
 
     def handle_request(self, request: Request) -> CoreRequestResult:
@@ -119,8 +133,13 @@ class Core:
             context = self._context_provider.current_context()
             orchestration_step = "working_memory_snapshot"
             memory = self._memory_snapshot_provider.snapshot()
-            orchestration_step = "request_decision"
+            orchestration_step = "confirmation_resolution"
+            confirmation = self._confirmation_coordinator.resolve(
+                request.request_id,
+                request.content,
+            )
             candidate_capabilities = self._capability_catalog.list_available()
+            orchestration_step = "request_decision"
             decision = self._decision_engine.decide(
                 DecisionInput(
                     request=request,
@@ -130,6 +149,12 @@ class Core:
                     platform_state=self._platform_state,
                     user_policy=self._user_policy,
                     candidate_capabilities=candidate_capabilities,
+                    confirmation=(
+                        confirmation
+                        if confirmation.status
+                        is not ConfirmationResolutionStatus.NOT_APPLICABLE
+                        else None
+                    ),
                 )
             )
             if decision.request_id != request.request_id:
@@ -137,8 +162,11 @@ class Core:
                     "Decision request identity does not match Core input."
                 )
 
+            interpretation: RequestInterpretation | None = None
             if (
-                decision.outcome is DecisionOutcome.DELEGATE
+                confirmation.status
+                is ConfirmationResolutionStatus.NOT_APPLICABLE
+                and decision.outcome is DecisionOutcome.DELEGATE
                 and decision.target == REQUEST_INTERPRETER_SERVICE_ID
                 and self._request_interpreter is not None
             ):
@@ -173,6 +201,26 @@ class Core:
                             "Decision request identity does not match Core input."
                         )
 
+            if (
+                confirmation.status is ConfirmationResolutionStatus.ACCEPTED
+                and decision.outcome is DecisionOutcome.EXECUTE
+            ):
+                raise InconsistentDecisionError(
+                    "Accepted confirmation cannot authorize direct execution."
+                )
+
+            confirmation_prompt: ConfirmationPrompt | None = None
+            if (
+                interpretation is not None
+                and decision.outcome is DecisionOutcome.ASK_FOR_CONFIRMATION
+            ):
+                orchestration_step = "confirmation_creation"
+                confirmation_prompt = self._begin_confirmation(
+                    request,
+                    decision,
+                    interpretation,
+                )
+
             plan: Plan | None = None
             execution_results: tuple[CapabilityExecutionResult, ...] = ()
             if decision.outcome is DecisionOutcome.EXECUTE:
@@ -183,14 +231,25 @@ class Core:
             elif decision.outcome is DecisionOutcome.REQUEST_PLANNING:
                 orchestration_step = "planning"
                 planning_id = uuid4()
+                confirmation_action = (
+                    confirmation.pending.action
+                    if confirmation.status is ConfirmationResolutionStatus.ACCEPTED
+                    and confirmation.pending is not None
+                    else None
+                )
                 plan = self._planner.create_plan(
                     PlanningRequest(
                         planning_id=planning_id,
                         request_id=request.request_id,
-                        goal=request.content,
+                        goal=(
+                            confirmation_action.intent_id.value
+                            if confirmation_action is not None
+                            else request.content
+                        ),
                         constraints=self._planning_constraints,
                         context=context,
                         memory=memory,
+                        confirmation_action=confirmation_action,
                     )
                 )
                 if (
@@ -219,9 +278,44 @@ class Core:
             decision=decision,
             plan=plan,
             execution_results=execution_results,
+            confirmation_prompt=confirmation_prompt,
         )
         self._publish_completed(result)
         return result
+
+    def _begin_confirmation(
+        self,
+        request: Request,
+        decision: Decision,
+        interpretation: RequestInterpretation,
+    ) -> ConfirmationPrompt:
+        if decision.target != interpretation.capability_id:
+            raise InconsistentDecisionError(
+                "Confirmation decision target does not match interpretation."
+            )
+        try:
+            target_id = ApplicationIdentifier(interpretation.target_id)
+        except ValueError as error:
+            raise InconsistentDecisionError(
+                "Confirmation interpretation target is not approved."
+            ) from error
+        action = ConfirmationAction(
+            intent_id=interpretation.intent_id,
+            capability_id=interpretation.capability_id,
+            target_id=target_id,
+        )
+        pending = self._confirmation_coordinator.begin(
+            request.request_id,
+            action,
+            self._interaction_language_resolver.resolve(request.content),
+        )
+        return ConfirmationPrompt(
+            confirmation_id=pending.confirmation_id,
+            intent_id=pending.action.intent_id,
+            target_id=pending.action.target_id,
+            expires_at=pending.expires_at,
+            language=pending.language,
+        )
 
     def _execute_direct(
         self,

@@ -31,6 +31,8 @@ def test_validator_accepts_valid_configuration() -> None:
         ("ai_enabled", "true"),
         ("ai_timeout_seconds", 0),
         ("ai_timeout_seconds", True),
+        ("confirmation_ttl_seconds", 0),
+        ("confirmation_ttl_seconds", True),
     ),
 )
 def test_validator_rejects_invalid_values(

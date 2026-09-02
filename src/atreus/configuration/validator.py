@@ -15,6 +15,7 @@ _EXPECTED_TYPES: dict[str, type[str] | type[bool] | type[int]] = {
     "ai_enabled": bool,
     "ai_model": str,
     "ai_timeout_seconds": int,
+    "confirmation_ttl_seconds": int,
     "start_with_windows": bool,
     "always_on": bool,
 }
@@ -95,6 +96,7 @@ class ConfigurationValidator:
             "working_memory_capacity",
             "working_memory_entry_ttl_seconds",
             "ai_timeout_seconds",
+            "confirmation_ttl_seconds",
         ):
             value = values[field_name]
             if isinstance(value, int) and value <= 0:
