@@ -5,6 +5,7 @@ from enum import StrEnum
 from uuid import UUID
 
 from atreus.ai.models import RequestInterpretation
+from atreus.application.models import ApplicationAction
 from atreus.capability.models import CapabilityMetadata
 from atreus.confirmation.models import ConfirmationResolution
 from atreus.context.models import ContextSnapshot
@@ -72,6 +73,7 @@ class Decision:
     outcome: DecisionOutcome
     target: str | None
     reason_code: str
+    action: ApplicationAction | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

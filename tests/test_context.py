@@ -136,7 +136,7 @@ def test_unavailable_provider_keeps_start_and_updates_evaluation_time() -> None:
 def test_context_domain_has_no_windows_or_native_process_imports() -> None:
     forbidden_imports = {
         "subprocess",
-        "atreus.system.windows_application_controller",
+        "atreus.system.windows_application_launcher",
     }
 
     for path in Path("src/atreus/context").glob("*.py"):

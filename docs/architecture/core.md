@@ -249,28 +249,36 @@ planning occurs. Capability invocations and Capability Runtime do not receive
 memory. Core reads only the snapshot boundary and does not store entries,
 select memory facts, or retain the snapshot after request orchestration.
 
-For AI Provider V0, the first Decision Engine evaluation may return
-`DELEGATE(ai.request_interpreter)` only after the deterministic path has not
-resolved the request. Core calls the injected `RequestInterpreter` at most once
-and supplies only the original `Request`; it does not supply Context or Working
-Memory. A valid `RequestInterpretation` is added explicitly to a second
+For bounded request interpretation, the first Decision Engine evaluation may
+return `DELEGATE(ai.request_interpreter)` only after the deterministic path has
+not resolved the request. Core calls the injected `RequestInterpreter` at most
+once and supplies only the original `Request`; it does not supply Context or
+Working Memory. A valid `RequestInterpretation` is added explicitly to a second
 `DecisionInput` that reuses the same Context and Memory snapshots and the same
-Capability Catalog view. The second V0 decision is non-executable and requires
-confirmation. Core does not loop, interpret provider output, or forward the
-interpretation to Planner or Capability Runtime.
+Capability Catalog view. The second decision never directly executes a
+capability. A validated open action requires confirmation; a validated
+read-only status action may proceed to planning. Core does not loop, interpret
+provider output, or forward `RequestInterpretation` to Planner or Capability
+Runtime.
 
-When the second evaluation returns `ASK_FOR_CONFIRMATION`, Core creates one
-typed `ConfirmationAction` and asks the injected `ConfirmationCoordinator` to
-own it. The returned `ConfirmationPrompt` contains only approved structured
-identifiers, expiration, and interaction language. The foreground interface
-renders the prompt; Core does not produce translated sentences.
+When the second evaluation returns `ASK_FOR_CONFIRMATION`, Core passes the exact
+validated `ApplicationAction` to the injected `ConfirmationCoordinator`. The
+returned `ConfirmationPrompt` contains only approved structured identifiers,
+expiration, and interaction language. The foreground interface renders the
+prompt; Core does not produce translated sentences.
 
 A later response is a new request with its own single Context and Memory
 snapshots. Core resolves it through the coordinator before any AI delegation.
 An accepted single-use resolution returns to Decision Engine and may produce
-`REQUEST_PLANNING`; it never authorizes direct `EXECUTE`. Core passes only the
-approved `ConfirmationAction` to Planner. Rejected, invalidated, expired, or
-unmatched confirmation tokens complete safely without planning or execution.
+`REQUEST_PLANNING`; it never authorizes direct `EXECUTE`. Core passes the same
+approved `ApplicationAction` instance to Planner. Rejected, invalidated,
+expired, or unmatched confirmation tokens complete safely without planning or
+execution.
+
+For `APPLICATION_STATUS`, Core passes the exact locally validated action from
+the second Decision Engine result directly to Planner. It does not create
+confirmation state, reconstruct the action from text, inspect processes, or
+render the status result.
 
 ---
 

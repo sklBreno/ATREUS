@@ -2,10 +2,13 @@
 
 from datetime import UTC
 
+from atreus.application.contracts import (
+    deterministic_application_action,
+    is_supported_application_action,
+)
+from atreus.application.models import ApplicationAction
 from atreus.capability.contracts import (
     APPLICATION_ID_ARGUMENT,
-    OPEN_APPLICATION_CAPABILITY_ID,
-    OPEN_APPLICATION_COMMAND_TARGETS,
     CapabilityArgument,
     CapabilityArguments,
 )
@@ -13,7 +16,6 @@ from atreus.capability.models import (
     CapabilityAvailabilityState,
     CapabilityMetadata,
 )
-from atreus.confirmation.models import ConfirmationAction
 from atreus.interfaces.capability_registry import CapabilityCatalog
 from atreus.interfaces.clock import Clock
 from atreus.interfaces.event_bus import EventBus
@@ -30,8 +32,6 @@ from atreus.planner.models import (
     PlanningRequest,
     PlanStep,
 )
-
-_APPLICATION_IDS_BY_COMMAND = dict(OPEN_APPLICATION_COMMAND_TARGETS)
 
 
 class DeterministicPlanner(Planner):
@@ -72,7 +72,7 @@ class DeterministicPlanner(Planner):
         selected_ids = self._select_capability_ids(
             request.goal,
             request.constraints,
-            request.confirmation_action,
+            request.action,
         )
         ordered_metadata = self._resolve_capabilities(
             selected_ids,
@@ -94,7 +94,7 @@ class DeterministicPlanner(Planner):
                 arguments=self._capability_arguments(
                     request.goal,
                     metadata.identifier,
-                    request.confirmation_action,
+                    request.action,
                 ),
                 depends_on=tuple(
                     step_ids[dependency]
@@ -128,25 +128,23 @@ class DeterministicPlanner(Planner):
         self,
         goal: str,
         constraints: PlanningConstraints,
-        confirmation_action: ConfirmationAction | None,
+        action: ApplicationAction | None,
     ) -> tuple[str, ...]:
-        if confirmation_action is not None:
+        resolved_action = action or deterministic_application_action(goal)
+        if resolved_action is not None:
+            if not is_supported_application_action(resolved_action):
+                raise GoalNotPlannableError(
+                    "Application action is not supported."
+                )
             allowed = constraints.allowed_capability_ids
             if (
                 allowed is not None
-                and confirmation_action.capability_id not in allowed
+                and resolved_action.capability_id not in allowed
             ):
                 raise GoalNotPlannableError(
-                    "Confirmed action is outside the planning allowlist."
+                    "Application action is outside the planning allowlist."
                 )
-            return (confirmation_action.capability_id,)
-        if self._application_id(goal) is not None:
-            allowed = constraints.allowed_capability_ids
-            if allowed is not None and OPEN_APPLICATION_CAPABILITY_ID not in allowed:
-                raise GoalNotPlannableError(
-                    "Application opening is outside the planning allowlist."
-                )
-            return (OPEN_APPLICATION_CAPABILITY_ID,)
+            return (resolved_action.capability_id,)
         if constraints.allowed_capability_ids is not None:
             if not constraints.allowed_capability_ids:
                 raise GoalNotPlannableError(
@@ -170,33 +168,21 @@ class DeterministicPlanner(Planner):
     def _capability_arguments(
         goal: str,
         capability_id: str,
-        confirmation_action: ConfirmationAction | None,
+        action: ApplicationAction | None,
     ) -> CapabilityArguments:
-        if confirmation_action is not None:
-            if capability_id != confirmation_action.capability_id:
+        resolved_action = action or deterministic_application_action(goal)
+        if resolved_action is not None:
+            if capability_id != resolved_action.capability_id:
                 raise InvalidCapabilityReferenceError(
-                    "Confirmed action capability does not match the plan step."
+                    "Application action capability does not match the plan step."
                 )
             return (
                 CapabilityArgument(
                     APPLICATION_ID_ARGUMENT,
-                    confirmation_action.target_id.value,
+                    resolved_action.application_id.value,
                 ),
             )
-        application_id = DeterministicPlanner._application_id(goal)
-        if capability_id == OPEN_APPLICATION_CAPABILITY_ID and application_id:
-            return (CapabilityArgument(APPLICATION_ID_ARGUMENT, application_id),)
         return ()
-
-    @staticmethod
-    def _application_id(goal: str) -> str | None:
-        return _APPLICATION_IDS_BY_COMMAND.get(
-            DeterministicPlanner._normalize_goal(goal)
-        )
-
-    @staticmethod
-    def _normalize_goal(goal: str) -> str:
-        return " ".join(goal.casefold().split()).strip(" .!?")
 
     def _resolve_capabilities(
         self,

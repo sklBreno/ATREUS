@@ -122,34 +122,37 @@ vendor client directly.
 Version 1 supports one active provider implementation at a time. Provider
 selection and fallback chains require separate future architecture.
 
-# Request Interpreter V0
+# Request Interpreter V1
 
 `RequestInterpreter` is the bounded service used by Core after Decision Engine
 returns `DELEGATE(ai.request_interpreter)`. It accepts the original immutable
 `Request`, invokes `AIProvider` at most once, validates the structured output,
 and maps the approved intent to a local capability identifier.
 
-V0 accepts only:
+V1 accepts only:
 
-- Intent `OPEN_APPLICATION`.
+- Intents `OPEN_APPLICATION` and `APPLICATION_STATUS`.
 - Targets already approved by the controlled application contract.
 
 The provider may return only `intent_id`, `target_id`, and `confidence`. It
 cannot provide executable names, paths, command lines, permission grants,
 capability identifiers, shell content, or arbitrary arguments. The interpreter
-maps `OPEN_APPLICATION` to `application.open` locally and verifies current
-Capability Catalog availability before returning `RequestInterpretation`.
+maps the returned intent and target through the authoritative local action
+matrix and verifies current Capability Catalog availability before returning
+`RequestInterpretation` with a typed `ApplicationAction`.
 
 The interpretation is non-executable. Core submits it to a second Decision
-Engine evaluation, which requires user confirmation in V0. Planner, Capability
-Runtime, and System Layer never receive the interpretation.
+Engine evaluation. AI-originated open actions require Interactive Confirmation;
+read-only status actions proceed to planning without confirmation. Capability
+Runtime and System Layer never receive `RequestInterpretation` or raw provider
+output.
 
 Interactive Confirmation is a separate local boundary. AI Provider does not
 parse yes/no input, detect the interaction language, render confirmation text,
 store pending authorization, or observe the eventual result. Exact confirmation
-responses make zero AI requests. After acceptance, Planner receives only a
-typed locally approved `ConfirmationAction`, not `RequestInterpretation` or raw
-provider output.
+responses make zero AI requests. The same locally approved
+`ApplicationAction` is preserved through Decision Engine, confirmation when
+required, and Planner; it is never reconstructed from raw text.
 
 ---
 
@@ -174,10 +177,12 @@ Response or Error Normalization
 AIResponse
 ```
 
-The OpenAI V0 adapter uses the official SDK Responses API with strict JSON
+The OpenAI adapter uses the official SDK Responses API with strict JSON
 Schema Structured Outputs. The schema rejects additional fields and constrains
-the intent, approved targets, and confidence range. The interpreter validates
-the decoded response again because provider output remains untrusted.
+the two approved intents, approved targets, and confidence range. It contains
+no capability, executable, process, PID, path, argument, or command field. The
+interpreter validates the decoded response again because provider output
+remains untrusted and may name a locally unsupported intent-target combination.
 
 No tools, web search, file search, MCP integration, shell, or executable
 function is supplied to the model. Automatic SDK retries are disabled in V0.
@@ -286,6 +291,11 @@ Contract tests for every provider implementation must cover:
 
 Consumer tests use fake `AIProvider` implementations and must not require real
 credentials or network access.
+
+Natural Language Actions tests additionally cover strict intent and target
+enums, rejection of extra or native fields, unsupported local combinations,
+one provider call per eligible request, mandatory confirmation for open, and
+direct read-only planning for status.
 
 ---
 

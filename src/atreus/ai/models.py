@@ -11,6 +11,7 @@ from atreus.ai.exceptions import (
     InvalidAIResponseError,
     InvalidRequestInterpretationError,
 )
+from atreus.application.models import ApplicationAction
 from atreus.events.models import Event
 
 REQUEST_INTERPRETER_SERVICE_ID = "ai.request_interpreter"
@@ -36,12 +37,6 @@ class AIRequestPurpose(StrEnum):
     """Identify one approved bounded use of an AI Provider."""
 
     REQUEST_INTERPRETATION = "REQUEST_INTERPRETATION"
-
-
-class AIIntent(StrEnum):
-    """Identify one operational intent accepted from AI interpretation."""
-
-    OPEN_APPLICATION = "OPEN_APPLICATION"
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,43 +108,11 @@ class AIResponse:
 
 
 @dataclass(frozen=True, slots=True)
-class AIActionCandidate:
-    """Describe one locally approved intent, capability, and target set."""
-
-    intent_id: AIIntent
-    capability_id: str
-    target_ids: tuple[str, ...]
-
-    def __post_init__(self) -> None:
-        """Validate the deterministic interpretation candidate."""
-        if not isinstance(self.intent_id, AIIntent):
-            raise InvalidRequestInterpretationError("AI candidate intent is invalid.")
-        if not isinstance(self.capability_id, str) or not self.capability_id.strip():
-            raise InvalidRequestInterpretationError(
-                "AI candidate capability_id must be non-empty."
-            )
-        if (
-            not isinstance(self.target_ids, tuple)
-            or not self.target_ids
-            or any(
-                not isinstance(target_id, str) or not target_id.strip()
-                for target_id in self.target_ids
-            )
-            or len(self.target_ids) != len(set(self.target_ids))
-        ):
-            raise InvalidRequestInterpretationError(
-                "AI candidate target_ids must be unique non-empty strings."
-            )
-
-
-@dataclass(frozen=True, slots=True)
 class RequestInterpretation:
     """Represent a locally validated, non-executable AI interpretation."""
 
     request_id: UUID
-    intent_id: AIIntent
-    capability_id: str
-    target_id: str
+    action: ApplicationAction
     confidence: float
 
     def __post_init__(self) -> None:
@@ -158,18 +121,10 @@ class RequestInterpretation:
             raise InvalidRequestInterpretationError(
                 "Interpretation request_id must be a UUID."
             )
-        if not isinstance(self.intent_id, AIIntent):
+        if not isinstance(self.action, ApplicationAction):
             raise InvalidRequestInterpretationError(
-                "Interpretation intent_id is invalid."
+                "Interpretation action is invalid."
             )
-        for field_name, value in (
-            ("capability_id", self.capability_id),
-            ("target_id", self.target_id),
-        ):
-            if not isinstance(value, str) or not value.strip():
-                raise InvalidRequestInterpretationError(
-                    f"Interpretation {field_name} must be non-empty."
-                )
         if (
             type(self.confidence) not in {int, float}
             or not isfinite(float(self.confidence))

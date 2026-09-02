@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from atreus.application.models import ApplicationAction
 from atreus.capability.contracts import CapabilityArguments
-from atreus.confirmation.models import ConfirmationAction
 from atreus.context.models import ContextSnapshot
 from atreus.events.models import Event
 from atreus.memory.models import MemorySnapshot
@@ -32,7 +32,7 @@ class PlanningRequest:
     constraints: PlanningConstraints
     context: ContextSnapshot
     memory: MemorySnapshot
-    confirmation_action: ConfirmationAction | None = None
+    action: ApplicationAction | None = None
 
 
 @dataclass(frozen=True, slots=True)

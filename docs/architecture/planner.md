@@ -61,8 +61,8 @@ The Planner accepts an immutable `PlanningRequest` containing:
 - `constraints`: Explicit immutable planning constraints.
 - `context`: Current context snapshot relevant to planning.
 - `memory`: Stable bounded memory snapshot captured for the request.
-- `confirmation_action`: Optional approved typed action supplied only after a
-  single-use Interactive Confirmation resolution.
+- `action`: Optional approved `ApplicationAction` supplied by Core after local
+  interpretation validation or a single-use confirmation resolution.
 
 The context is the same immutable snapshot captured by Core for the request.
 Planner consumes it as planning input and must not select, refresh, merge, or
@@ -212,16 +212,22 @@ It does not depend on Core, Capability Runtime, System Layer, `MemoryStore`, or
 a concrete AI provider. It consumes only the immutable `MemorySnapshot` data
 contract.
 
-AI Provider V0 does not place `RequestInterpretation` in `PlanningRequest`. A
-valid interpretation first returns to Decision Engine and creates no plan until
-a later exact confirmation response is accepted and reevaluated. Core then
-supplies only the approved `ConfirmationAction`, never raw AI output or yes/no
-content.
+AI Provider does not place `RequestInterpretation` in `PlanningRequest`. A
+valid interpretation first returns to Decision Engine. Open actions are
+planned only after a later exact confirmation response is accepted and
+reevaluated; read-only status actions may be planned immediately. Core supplies
+only the approved `ApplicationAction`, never raw AI output or yes/no content.
 
-For V0 confirmation, Planner uses the typed action to create
-`application.open(application_id=<approved ApplicationIdentifier>)`. It does
-not reconstruct the target from the response request text. Capability Catalog
-validation and normal planning constraints remain active.
+Planner maps the typed action to exactly one specific capability invocation:
+
+- `OPEN_APPLICATION` becomes
+  `application.open(application_id=<approved ApplicationIdentifier>)`.
+- `APPLICATION_STATUS` becomes
+  `application.status(application_id=<approved ApplicationIdentifier>)`.
+
+It does not reconstruct the target from request text or know Windows
+executables and process names. Capability Catalog validation and normal
+planning constraints remain active.
 
 ---
 

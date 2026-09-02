@@ -8,16 +8,15 @@ import pytest
 
 from atreus.ai.models import (
     REQUEST_INTERPRETER_SERVICE_ID,
-    AIIntent,
     RequestInterpretation,
 )
+from atreus.application.models import ApplicationAction, ApplicationIntent
 from atreus.capability.models import (
     CapabilityAvailability,
     CapabilityAvailabilityState,
     CapabilityMetadata,
 )
 from atreus.confirmation.models import (
-    ConfirmationAction,
     ConfirmationResolution,
     ConfirmationResolutionStatus,
     PendingConfirmation,
@@ -106,8 +105,8 @@ def make_input(
             else PendingConfirmation(
                 uuid4(),
                 uuid4(),
-                ConfirmationAction(
-                    AIIntent.OPEN_APPLICATION,
+                ApplicationAction(
+                    ApplicationIntent.OPEN_APPLICATION,
                     "application.open",
                     ApplicationIdentifier.CALCULATOR,
                 ),
@@ -203,7 +202,6 @@ def test_unrelated_command_does_not_select_sole_available_capability() -> None:
     (
         "open calculator",
         "  OPEN   NOTEPAD!  ",
-        "Open Spotify.",
     ),
 )
 def test_controlled_application_resolves_to_planning_target(content: str) -> None:
@@ -223,6 +221,25 @@ def test_controlled_application_resolves_to_planning_target(content: str) -> Non
     assert decision.outcome is DecisionOutcome.REQUEST_PLANNING
     assert decision.target == "application.open"
     assert decision.reason_code == "command_requires_explicit_plan"
+
+
+def test_explicitly_unsupported_application_action_is_ignored() -> None:
+    decision = make_engine().decide(
+        make_input(
+            content="Open Spotify.",
+            candidates=(
+                make_metadata(
+                    "application.open",
+                    permissions=("application.control",),
+                ),
+            ),
+            permission_grants=("application.control",),
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.IGNORE
+    assert decision.target is None
+    assert decision.reason_code == "application_action_unsupported"
 
 
 @pytest.mark.parametrize(
@@ -378,9 +395,11 @@ def test_valid_interpretation_requires_confirmation_without_execution() -> None:
     )
     interpretation = RequestInterpretation(
         decision_input.request.request_id,
-        AIIntent.OPEN_APPLICATION,
-        "application.open",
-        "calculator",
+        ApplicationAction(
+            ApplicationIntent.OPEN_APPLICATION,
+            "application.open",
+            ApplicationIdentifier.CALCULATOR,
+        ),
         0.9,
     )
 
@@ -400,15 +419,61 @@ def test_valid_interpretation_requires_confirmation_without_execution() -> None:
     assert decision.outcome is DecisionOutcome.ASK_FOR_CONFIRMATION
     assert decision.target == "application.open"
     assert decision.reason_code == "ai_interpretation_requires_confirmation"
+    assert decision.action is interpretation.action
+
+
+def test_status_interpretation_plans_same_action_without_confirmation() -> None:
+    decision_input = make_input(
+        content="Is calculator open?",
+        request_type=RequestType.QUESTION,
+        candidates=(
+            make_metadata(
+                "application.status",
+                permissions=("application.read",),
+            ),
+        ),
+        permission_grants=("application.read",),
+        allow_delegation=True,
+        delegation_service_id=REQUEST_INTERPRETER_SERVICE_ID,
+    )
+    interpretation = RequestInterpretation(
+        decision_input.request.request_id,
+        ApplicationAction(
+            ApplicationIntent.APPLICATION_STATUS,
+            "application.status",
+            ApplicationIdentifier.CALCULATOR,
+        ),
+        0.9,
+    )
+
+    decision = make_engine().decide(
+        DecisionInput(
+            request=decision_input.request,
+            classification=decision_input.classification,
+            context=decision_input.context,
+            memory=decision_input.memory,
+            platform_state=decision_input.platform_state,
+            user_policy=decision_input.user_policy,
+            candidate_capabilities=decision_input.candidate_capabilities,
+            interpretation=interpretation,
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.REQUEST_PLANNING
+    assert decision.target == "application.status"
+    assert decision.reason_code == "read_only_action_requires_explicit_plan"
+    assert decision.action is interpretation.action
 
 
 def test_interpretation_cannot_select_unavailable_capability() -> None:
     decision_input = make_input(content="Please open calculator for me")
     interpretation = RequestInterpretation(
         decision_input.request.request_id,
-        AIIntent.OPEN_APPLICATION,
-        "application.open",
-        "calculator",
+        ApplicationAction(
+            ApplicationIntent.OPEN_APPLICATION,
+            "application.open",
+            ApplicationIdentifier.CALCULATOR,
+        ),
         0.9,
     )
 
@@ -441,9 +506,11 @@ def test_interpretation_cannot_bypass_permission_policy() -> None:
     )
     interpretation = RequestInterpretation(
         decision_input.request.request_id,
-        AIIntent.OPEN_APPLICATION,
-        "application.open",
-        "calculator",
+        ApplicationAction(
+            ApplicationIntent.OPEN_APPLICATION,
+            "application.open",
+            ApplicationIdentifier.CALCULATOR,
+        ),
         0.9,
     )
 

@@ -244,6 +244,17 @@ Layer enforces them again at the operating-system boundary.
 Configuration Manager does not grant permissions interactively. Version 1 has
 no interactive permission-grant system.
 
+The current default grants are `application.control` and `application.read`.
+They may be overridden as a comma-separated immutable set through
+`ATREUS_PERMISSION_GRANTS` using the standard process environment over `.env`
+over defaults priority. An empty value grants no application permission.
+Malformed, non-normalized, or duplicate identifiers are rejected.
+
+`application.control` permits the approved application launch boundary.
+`application.read` independently permits the read-only application status
+boundary. Neither grant authorizes arbitrary executable, process, PID, path, or
+shell operations.
+
 ---
 
 # Configurable Numeric Policies

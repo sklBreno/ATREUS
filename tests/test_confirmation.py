@@ -6,14 +6,13 @@ from uuid import uuid4
 
 import pytest
 
-from atreus.ai.models import AIIntent
+from atreus.application.models import ApplicationAction, ApplicationIntent
 from atreus.confirmation.coordinator import InMemoryConfirmationCoordinator
 from atreus.confirmation.exceptions import (
     InvalidConfirmationError,
     PendingConfirmationExistsError,
 )
 from atreus.confirmation.models import (
-    ConfirmationAction,
     ConfirmationPrompt,
     ConfirmationResolution,
     ConfirmationResolutionStatus,
@@ -38,10 +37,10 @@ class MutableClock(Clock):
         return self.timestamp
 
 
-def make_action() -> ConfirmationAction:
+def make_action() -> ApplicationAction:
     """Create the only action supported by Confirmation V0."""
-    return ConfirmationAction(
-        AIIntent.OPEN_APPLICATION,
+    return ApplicationAction(
+        ApplicationIntent.OPEN_APPLICATION,
         "application.open",
         ApplicationIdentifier.CALCULATOR,
     )
@@ -74,7 +73,7 @@ def test_confirmation_models_are_frozen_and_use_slots() -> None:
     prompt = ConfirmationPrompt(
         pending.confirmation_id,
         action.intent_id,
-        action.target_id,
+        action.application_id,
         pending.expires_at,
         pending.language,
     )
@@ -86,7 +85,7 @@ def test_confirmation_models_are_frozen_and_use_slots() -> None:
     )
 
     with pytest.raises(FrozenInstanceError):
-        action.target_id = ApplicationIdentifier.NOTEPAD  # type: ignore[misc]
+        action.application_id = ApplicationIdentifier.NOTEPAD  # type: ignore[misc]
 
     assert not hasattr(action, "__dict__")
     assert not hasattr(pending, "__dict__")
@@ -96,23 +95,31 @@ def test_confirmation_models_are_frozen_and_use_slots() -> None:
 
 
 @pytest.mark.parametrize(
-    ("intent_id", "capability_id", "target_id"),
+    "action",
     (
-        ("OPEN_APPLICATION", "application.open", ApplicationIdentifier.CALCULATOR),
-        (AIIntent.OPEN_APPLICATION, "system.snapshot", ApplicationIdentifier.CALCULATOR),
-        (AIIntent.OPEN_APPLICATION, "application.open", "calculator"),
+        ApplicationAction(
+            ApplicationIntent.OPEN_APPLICATION,
+            "system.snapshot",
+            ApplicationIdentifier.CALCULATOR,
+        ),
+        ApplicationAction(
+            ApplicationIntent.APPLICATION_STATUS,
+            "application.status",
+            ApplicationIdentifier.CALCULATOR,
+        ),
     ),
 )
-def test_confirmation_action_rejects_unsupported_contracts(
-    intent_id: object,
-    capability_id: str,
-    target_id: object,
+def test_pending_confirmation_rejects_unsupported_actions(
+    action: ApplicationAction,
 ) -> None:
     with pytest.raises(InvalidConfirmationError):
-        ConfirmationAction(
-            intent_id,  # type: ignore[arg-type]
-            capability_id,
-            target_id,  # type: ignore[arg-type]
+        PendingConfirmation(
+            uuid4(),
+            uuid4(),
+            action,
+            InteractionLanguage.PT_BR,
+            NOW,
+            NOW + timedelta(seconds=120),
         )
 
 
@@ -193,14 +200,16 @@ def test_pending_confirmation_rejects_invalid_lifetime(
 def test_coordinator_begins_one_pending_without_implicit_replacement() -> None:
     coordinator, _ = make_coordinator()
     original_request_id = uuid4()
+    action = make_action()
 
     pending = coordinator.begin(
         original_request_id,
-        make_action(),
+        action,
         InteractionLanguage.PT_BR,
     )
 
     assert pending.original_request_id == original_request_id
+    assert pending.action is action
     assert pending.expires_at - pending.created_at == timedelta(seconds=120)
     with pytest.raises(PendingConfirmationExistsError):
         coordinator.begin(uuid4(), make_action(), InteractionLanguage.EN_US)

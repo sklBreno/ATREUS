@@ -26,6 +26,7 @@ def test_loader_returns_default_configuration_values() -> None:
         "ai_model": "",
         "ai_timeout_seconds": 30,
         "confirmation_ttl_seconds": 120,
+        "permission_grants": ("application.control", "application.read"),
         "start_with_windows": True,
         "always_on": True,
     }
@@ -42,6 +43,7 @@ def test_loader_loads_process_environment_values() -> None:
         "ATREUS_AI_MODEL": "test-model",
         "ATREUS_AI_TIMEOUT_SECONDS": "12",
         "ATREUS_CONFIRMATION_TTL_SECONDS": "90",
+        "ATREUS_PERMISSION_GRANTS": "application.read",
     }
 
     values = ConfigurationLoader(
@@ -58,6 +60,7 @@ def test_loader_loads_process_environment_values() -> None:
     assert values["ai_model"] == "test-model"
     assert values["ai_timeout_seconds"] == 12
     assert values["confirmation_ttl_seconds"] == 90
+    assert values["permission_grants"] == ("application.read",)
 
 
 def test_loader_never_exposes_openai_api_key() -> None:
@@ -81,6 +84,7 @@ def test_loader_loads_env_file_values(tmp_path: Path) -> None:
                 "export ATREUS_START_WITH_WINDOWS=no",
                 "ATREUS_WORKING_MEMORY_CAPACITY=16",
                 "ATREUS_CONFIRMATION_TTL_SECONDS=60",
+                "ATREUS_PERMISSION_GRANTS=application.control",
             )
         ),
         encoding="utf-8",
@@ -96,6 +100,7 @@ def test_loader_loads_env_file_values(tmp_path: Path) -> None:
     assert values["start_with_windows"] is False
     assert values["working_memory_capacity"] == 16
     assert values["confirmation_ttl_seconds"] == 60
+    assert values["permission_grants"] == ("application.control",)
 
 
 def test_process_environment_has_priority_over_env_file(tmp_path: Path) -> None:
@@ -104,7 +109,8 @@ def test_process_environment_has_priority_over_env_file(tmp_path: Path) -> None:
         "ATREUS_LANGUAGE=es-ES\n"
         "ATREUS_DEBUG=false\n"
         "ATREUS_WORKING_MEMORY_CAPACITY=16\n"
-        "ATREUS_CONFIRMATION_TTL_SECONDS=60\n",
+        "ATREUS_CONFIRMATION_TTL_SECONDS=60\n"
+        "ATREUS_PERMISSION_GRANTS=application.control\n",
         encoding="utf-8",
     )
     environment = {
@@ -112,6 +118,7 @@ def test_process_environment_has_priority_over_env_file(tmp_path: Path) -> None:
         "ATREUS_DEBUG": "true",
         "ATREUS_WORKING_MEMORY_CAPACITY": "32",
         "ATREUS_CONFIRMATION_TTL_SECONDS": "90",
+        "ATREUS_PERMISSION_GRANTS": "application.read",
     }
 
     values = ConfigurationLoader(
@@ -123,6 +130,7 @@ def test_process_environment_has_priority_over_env_file(tmp_path: Path) -> None:
     assert values["debug"] is True
     assert values["working_memory_capacity"] == 32
     assert values["confirmation_ttl_seconds"] == 90
+    assert values["permission_grants"] == ("application.read",)
 
 
 def test_loader_rejects_invalid_boolean_value() -> None:

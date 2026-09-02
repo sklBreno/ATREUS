@@ -3,12 +3,12 @@
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
+from atreus.application.models import ApplicationAction
 from atreus.confirmation.exceptions import (
     InvalidConfirmationError,
     PendingConfirmationExistsError,
 )
 from atreus.confirmation.models import (
-    ConfirmationAction,
     ConfirmationResolution,
     ConfirmationResolutionStatus,
     PendingConfirmation,
@@ -46,7 +46,7 @@ class InMemoryConfirmationCoordinator(ConfirmationCoordinator):
     def begin(
         self,
         original_request_id: UUID,
-        action: ConfirmationAction,
+        action: ApplicationAction,
         language: InteractionLanguage,
     ) -> PendingConfirmation:
         """Create one pending action without replacing a valid slot."""

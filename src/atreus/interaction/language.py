@@ -9,12 +9,15 @@ _WORD_PATTERN = re.compile(r"[^\W_]+", re.UNICODE)
 _PT_BR_MARKERS = frozenset(
     {
         "abre",
+        "aberta",
+        "aberto",
         "abrir",
         "bloco",
         "calculadora",
         "cálculos",
         "contas",
         "escrever",
+        "está",
         "fazer",
         "mim",
         "notas",
@@ -22,6 +25,7 @@ _PT_BR_MARKERS = frozenset(
         "pode",
         "pra",
         "quero",
+        "rodando",
         "umas",
     }
 )
@@ -31,9 +35,11 @@ _EN_US_MARKERS = frozenset(
         "calculator",
         "could",
         "do",
+        "is",
         "notepad",
         "open",
         "please",
+        "running",
         "some",
         "want",
         "write",

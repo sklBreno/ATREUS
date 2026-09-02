@@ -3,11 +3,11 @@
 from dataclasses import dataclass
 
 OPEN_APPLICATION_CAPABILITY_ID = "application.open"
+APPLICATION_STATUS_CAPABILITY_ID = "application.status"
 APPLICATION_ID_ARGUMENT = "application_id"
 OPEN_APPLICATION_COMMAND_TARGETS: tuple[tuple[str, str], ...] = (
     ("open calculator", "calculator"),
     ("open notepad", "notepad"),
-    ("open spotify", "spotify"),
 )
 
 type CapabilityScalar = str | int | float | bool | None

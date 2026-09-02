@@ -22,25 +22,25 @@ from atreus.context.models import (
 )
 from atreus.execution.models import CapabilityExecutionStatus, CapabilityInvocation
 from atreus.execution.runtime import InProcessCapabilityRuntime
-from atreus.interfaces.application_controller import ApplicationController
+from atreus.interfaces.application_launcher import ApplicationLauncher
 from atreus.shared.cancellation import StaticCancellationSignal
 from atreus.system.models import (
     APPLICATION_CONTROL_PERMISSION,
     ApplicationIdentifier,
 )
-from atreus.system.windows_application_controller import (
-    WindowsApplicationController,
+from atreus.system.windows_application_launcher import (
+    WindowsApplicationLauncher,
 )
 from tests.support import (
     NOW,
     FixedClock,
-    RecordingApplicationController,
+    RecordingApplicationLauncher,
     StaticAIAvailabilityProvider,
 )
 
 
 def make_runtime(
-    controller: ApplicationController,
+    controller: ApplicationLauncher,
 ) -> tuple[InProcessCapabilityRuntime, InMemoryCapabilityRegistry]:
     """Create a Runtime loaded with the controlled application capability."""
     registry = InMemoryCapabilityRegistry()
@@ -78,7 +78,7 @@ def make_invocation(application_id: str = "calculator") -> CapabilityInvocation:
 
 
 def test_runtime_loading_registers_open_application_capability() -> None:
-    _, registry = make_runtime(RecordingApplicationController())
+    _, registry = make_runtime(RecordingApplicationLauncher())
 
     metadata = registry.get(OPEN_APPLICATION_CAPABILITY_ID)
 
@@ -92,14 +92,13 @@ def test_runtime_loading_registers_open_application_capability() -> None:
     (
         ("calculator", ApplicationIdentifier.CALCULATOR),
         ("notepad", ApplicationIdentifier.NOTEPAD),
-        ("spotify", ApplicationIdentifier.SPOTIFY),
     ),
 )
 def test_runtime_invokes_open_application_through_system_boundary(
     application_id: str,
     expected_identifier: ApplicationIdentifier,
 ) -> None:
-    controller = RecordingApplicationController(process_id=9876)
+    controller = RecordingApplicationLauncher(process_id=9876)
     runtime, _ = make_runtime(controller)
 
     result = runtime.invoke(make_invocation(application_id))
@@ -119,7 +118,7 @@ def test_runtime_invokes_open_application_through_system_boundary(
 
 
 def test_runtime_isolates_unapproved_application_identifier() -> None:
-    controller = RecordingApplicationController()
+    controller = RecordingApplicationLauncher()
     runtime, _ = make_runtime(controller)
 
     result = runtime.invoke(make_invocation("terminal"))
@@ -137,7 +136,7 @@ def test_runtime_isolates_missing_windows_launch_mapping() -> None:
         return 9876
 
     runtime, _ = make_runtime(
-        WindowsApplicationController(start_process, "win32")
+        WindowsApplicationLauncher(start_process, "win32")
     )
 
     result = runtime.invoke(make_invocation("spotify"))
@@ -145,3 +144,14 @@ def test_runtime_isolates_missing_windows_launch_mapping() -> None:
     assert result.status is CapabilityExecutionStatus.FAILED
     assert result.error_code == "capability_execution_failed"
     assert commands == []
+
+
+def test_runtime_rejects_unsupported_spotify_before_system_boundary() -> None:
+    controller = RecordingApplicationLauncher()
+    runtime, _ = make_runtime(controller)
+
+    result = runtime.invoke(make_invocation("spotify"))
+
+    assert result.status is CapabilityExecutionStatus.FAILED
+    assert result.error_code == "capability_execution_failed"
+    assert controller.calls == []

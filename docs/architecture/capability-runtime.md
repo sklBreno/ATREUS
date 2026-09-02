@@ -125,6 +125,17 @@ context view throughout a request.
 
 Capabilities receive no direct reference to Core or Capability Registry.
 
+Natural Language Actions V1 uses two ordinary, specific capability contracts:
+
+- `application.open` requires `application.control` and performs an approved
+  launch through `ApplicationLauncher`.
+- `application.status` requires `application.read` and performs a read-only
+  observation through `ApplicationStateReader`.
+
+Runtime remains generic. It receives neither `RequestInterpretation` nor
+`ApplicationAction`, and it knows no executable, process name, PID, path, shell
+command, or application-specific native mapping.
+
 ---
 
 # Execution Result

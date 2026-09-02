@@ -25,6 +25,10 @@ V0 supports only `OPEN_APPLICATION` actions originating from a validated
 `RequestInterpretation`. Deterministic application commands keep their existing
 local path and do not gain an additional confirmation step.
 
+`APPLICATION_STATUS` is read-only and never creates a pending confirmation.
+It returns to Decision Engine and Planner through the Natural Language Actions
+flow with normal permission enforcement.
+
 V0 intentionally excludes queues, multiple sessions, persistence, background
 expiration, generic approvals, permission grants, and AI-based parsing.
 
@@ -47,11 +51,12 @@ in confirmation domain objects.
 
 # Contracts
 
-`ConfirmationAction` preserves exactly:
+`ApplicationAction` is the shared provider-neutral action contract and
+preserves exactly:
 
 - `intent_id`: `OPEN_APPLICATION`.
 - `capability_id`: `application.open`.
-- `target_id`: An approved `ApplicationIdentifier`.
+- `application_id`: An approved `ApplicationIdentifier`.
 
 `PendingConfirmation` adds a confirmation identifier, original request
 identifier, interaction language, and timezone-aware UTC creation and
@@ -130,10 +135,10 @@ Decision Engine revalidates correlation, action integrity, current capability
 availability, user restrictions, configured permission policy, and operational
 state. A valid acceptance returns `REQUEST_PLANNING`, never `EXECUTE`.
 
-Core supplies the approved typed `ConfirmationAction` to Planner. Planner
-creates `application.open(application_id=<approved identifier>)` without using
-the yes/no response or raw AI output. The consumed confirmation is not restored
-if planning or execution later fails.
+Core supplies the exact approved `ApplicationAction` instance to Planner.
+Planner creates `application.open(application_id=<approved identifier>)`
+without using the yes/no response or raw AI output. The consumed confirmation
+is not restored if planning or execution later fails.
 
 Capability Runtime remains the authoritative enforcer of permission grants,
 dependencies, and availability before execution. System Layer continues to
