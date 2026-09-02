@@ -170,7 +170,8 @@ Core then coordinates this deterministic Version 1 sequence:
 2. Initialize Event Bus.
 3. Initialize bounded Working Memory.
 4. Initialize System Layer adapters.
-5. Initialize the configured AI Provider abstraction, if available.
+5. Initialize the configured AI Provider and bounded Request Interpreter, if
+   available.
 6. Initialize Capability Registry.
 7. Initialize Capability Runtime and load trusted local capabilities.
 8. Seal Capability Registry after dependency validation.
@@ -218,6 +219,12 @@ Decision Engine returns Decision
     │                                ▼
     │                         Capability Runtime
     ├── DELEGATE ──────────────> Explicit service interface
+    │                                │
+    │                   Request Interpreter may return one validated
+    │                   non-executable interpretation
+    │                                │
+    │                                ▼
+    │                    second Decision Engine evaluation
     ├── ASK_FOR_CONFIRMATION ──> User interaction boundary
     ├── SUGGEST ───────────────> User interaction boundary
     └── IGNORE ────────────────> No action
@@ -240,6 +247,16 @@ It reuses that same instance in `DecisionInput` and `PlanningRequest` when
 planning occurs. Capability invocations and Capability Runtime do not receive
 memory. Core reads only the snapshot boundary and does not store entries,
 select memory facts, or retain the snapshot after request orchestration.
+
+For AI Provider V0, the first Decision Engine evaluation may return
+`DELEGATE(ai.request_interpreter)` only after the deterministic path has not
+resolved the request. Core calls the injected `RequestInterpreter` at most once
+and supplies only the original `Request`; it does not supply Context or Working
+Memory. A valid `RequestInterpretation` is added explicitly to a second
+`DecisionInput` that reuses the same Context and Memory snapshots and the same
+Capability Catalog view. The second V0 decision is non-executable and requires
+confirmation. Core does not loop, interpret provider output, or forward the
+interpretation to Planner or Capability Runtime.
 
 ---
 
@@ -279,9 +296,9 @@ from a narrower configured permission.
 
 # AI Provider Initialization
 
-AI credentials enter through approved environment or configuration loading.
-Bootstrap injects them into the selected concrete provider adapter and supplies
-Core only with the `AIProvider` abstraction.
+The OpenAI V0 credential enters only through `ATREUS_OPENAI_API_KEY` in the
+process environment. Bootstrap injects it into the concrete adapter and
+supplies Core only with the `RequestInterpreter` abstraction.
 
 Core must never store, inspect, log, publish, or forward raw credentials.
 AI Provider must not persist them. Credentials are never hardcoded.
@@ -301,6 +318,7 @@ Core communicates through interfaces with:
 - Working Memory Snapshot Provider.
 - System Layer services.
 - AI Provider.
+- Request Interpreter.
 - Capability Registry and Capability Catalog.
 - Capability Runtime.
 - Context Provider and Context Engine lifecycle contract.
@@ -382,6 +400,9 @@ Core tests must cover:
   through decision and planning.
 - Working Memory snapshot failure before downstream decision or execution.
 - AI Provider unavailable behavior.
+- One bounded interpretation call, second-decision identity preservation, and
+  mandatory confirmation.
+- AI interpretation failure without planning or capability execution.
 - Module failure isolation.
 - Core-owned event publication.
 - Dependency injection through interfaces.

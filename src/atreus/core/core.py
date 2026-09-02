@@ -2,6 +2,8 @@
 
 from uuid import UUID, uuid4
 
+from atreus.ai.exceptions import AIProviderException, RequestInterpretationException
+from atreus.ai.models import REQUEST_INTERPRETER_SERVICE_ID
 from atreus.context.models import ContextSnapshot
 from atreus.core.exceptions import (
     InconsistentClassificationError,
@@ -28,6 +30,7 @@ from atreus.interfaces.event_bus import EventBus
 from atreus.interfaces.memory import MemorySnapshotProvider
 from atreus.interfaces.planner import Planner
 from atreus.interfaces.request_classifier import RequestClassifier
+from atreus.interfaces.request_interpreter import RequestInterpreter
 from atreus.planner.models import Plan, PlanningConstraints, PlanningRequest
 from atreus.shared.platform import PlatformStateSnapshot
 from atreus.shared.request import Request
@@ -50,6 +53,7 @@ class Core:
         user_policy: UserPolicy,
         planning_constraints: PlanningConstraints,
         execution_timeout_seconds: float | None,
+        request_interpreter: RequestInterpreter | None = None,
     ) -> None:
         """Initialize Core with explicit runtime contracts.
 
@@ -66,6 +70,7 @@ class Core:
             user_policy: Grants and user-control policy for orchestration.
             planning_constraints: Bounded policy for generated plans.
             execution_timeout_seconds: Optional injected invocation deadline.
+            request_interpreter: Optional bounded AI interpretation boundary.
         """
         self._event_bus = event_bus
         self._request_classifier = request_classifier
@@ -79,6 +84,7 @@ class Core:
         self._user_policy = user_policy
         self._planning_constraints = planning_constraints
         self._execution_timeout_seconds = execution_timeout_seconds
+        self._request_interpreter = request_interpreter
 
     def handle_request(self, request: Request) -> CoreRequestResult:
         """Coordinate one request through decision, planning, and execution.
@@ -114,6 +120,7 @@ class Core:
             orchestration_step = "working_memory_snapshot"
             memory = self._memory_snapshot_provider.snapshot()
             orchestration_step = "request_decision"
+            candidate_capabilities = self._capability_catalog.list_available()
             decision = self._decision_engine.decide(
                 DecisionInput(
                     request=request,
@@ -122,15 +129,49 @@ class Core:
                     memory=memory,
                     platform_state=self._platform_state,
                     user_policy=self._user_policy,
-                    candidate_capabilities=(
-                        self._capability_catalog.list_available()
-                    ),
+                    candidate_capabilities=candidate_capabilities,
                 )
             )
             if decision.request_id != request.request_id:
                 raise InconsistentDecisionError(
                     "Decision request identity does not match Core input."
                 )
+
+            if (
+                decision.outcome is DecisionOutcome.DELEGATE
+                and decision.target == REQUEST_INTERPRETER_SERVICE_ID
+                and self._request_interpreter is not None
+            ):
+                orchestration_step = "request_interpretation"
+                try:
+                    interpretation = self._request_interpreter.interpret(request)
+                except (
+                    AIProviderException,
+                    RequestInterpretationException,
+                ) as error:
+                    self._publish_error(
+                        request.request_id,
+                        orchestration_step,
+                        type(error).__name__,
+                    )
+                else:
+                    orchestration_step = "interpreted_request_decision"
+                    decision = self._decision_engine.decide(
+                        DecisionInput(
+                            request=request,
+                            classification=classification,
+                            context=context,
+                            memory=memory,
+                            platform_state=self._platform_state,
+                            user_policy=self._user_policy,
+                            candidate_capabilities=candidate_capabilities,
+                            interpretation=interpretation,
+                        )
+                    )
+                    if decision.request_id != request.request_id:
+                        raise InconsistentDecisionError(
+                            "Decision request identity does not match Core input."
+                        )
 
             plan: Plan | None = None
             execution_results: tuple[CapabilityExecutionResult, ...] = ()

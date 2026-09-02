@@ -12,6 +12,9 @@ _EXPECTED_TYPES: dict[str, type[str] | type[bool] | type[int]] = {
     "log_level": str,
     "working_memory_capacity": int,
     "working_memory_entry_ttl_seconds": int,
+    "ai_enabled": bool,
+    "ai_model": str,
+    "ai_timeout_seconds": int,
     "start_with_windows": bool,
     "always_on": bool,
 }
@@ -37,6 +40,7 @@ class ConfigurationValidator:
         self._validate_strings(values)
         self._validate_log_level(values)
         self._validate_positive_integers(values)
+        self._validate_ai_configuration(values)
 
     @staticmethod
     def _validate_fields(values: Mapping[str, object]) -> None:
@@ -70,7 +74,11 @@ class ConfigurationValidator:
         for field_name, expected_type in _EXPECTED_TYPES.items():
             if expected_type is str:
                 value = values[field_name]
-                if isinstance(value, str) and not value.strip():
+                if (
+                    field_name != "ai_model"
+                    and isinstance(value, str)
+                    and not value.strip()
+                ):
                     raise ConfigurationValidationError(
                         f"Configuration field '{field_name}' cannot be empty."
                     )
@@ -86,9 +94,19 @@ class ConfigurationValidator:
         for field_name in (
             "working_memory_capacity",
             "working_memory_entry_ttl_seconds",
+            "ai_timeout_seconds",
         ):
             value = values[field_name]
             if isinstance(value, int) and value <= 0:
                 raise ConfigurationValidationError(
                     f"Configuration field '{field_name}' must be positive."
+                )
+
+    @staticmethod
+    def _validate_ai_configuration(values: Mapping[str, object]) -> None:
+        if values["ai_enabled"] is True:
+            model = values["ai_model"]
+            if isinstance(model, str) and not model.strip():
+                raise ConfigurationValidationError(
+                    "Configuration field 'ai_model' cannot be empty when AI is enabled."
                 )

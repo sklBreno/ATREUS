@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
+from atreus.ai.models import AIRequestCompleted, AIRequestFailed, AIRequestStarted
 from atreus.bootstrap.bootstrap import Bootstrap
 from atreus.configuration.configuration_manager import ConfigurationManager
 from atreus.configuration.loader import ConfigurationLoader
@@ -202,12 +203,33 @@ def test_observer_subscribes_to_runtime_and_request_lifecycle() -> None:
             failure_stage="startup",
             error_type="OSError",
         ),
+        AIRequestStarted(
+            **common,
+            ai_request_id=uuid4(),
+            request_id=request_id,
+            provider_id="openai",
+        ),
+        AIRequestCompleted(
+            **common,
+            ai_request_id=uuid4(),
+            request_id=request_id,
+            provider_id="openai",
+            model_id="test-model",
+            duration_seconds=0.1,
+        ),
+        AIRequestFailed(
+            **common,
+            ai_request_id=uuid4(),
+            request_id=request_id,
+            provider_id="openai",
+            error_code="AIRequestTimeoutError",
+        ),
     )
 
     for event in events:
         event_bus.publish(event)
 
-    assert len(subscriptions) == 14
+    assert len(subscriptions) == 17
     assert [record.event_type for record in writer.records] == [
         "RequestReceived",
         "RequestClassified",
@@ -223,7 +245,15 @@ def test_observer_subscribes_to_runtime_and_request_lifecycle() -> None:
         "RuntimeStopping",
         "RuntimeStopped",
         "RuntimeFailed",
+        "AIRequestStarted",
+        "AIRequestCompleted",
+        "AIRequestFailed",
     ]
+
+    assert all(record.provider_id in {None, "openai"} for record in writer.records)
+    assert not hasattr(events[-3], "content")
+    assert not hasattr(events[-2], "response")
+    assert not hasattr(events[-1], "error_message")
 
 
 def test_runtime_failure_log_is_structured_and_sanitized(tmp_path: Path) -> None:

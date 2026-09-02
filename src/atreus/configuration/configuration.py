@@ -22,6 +22,9 @@ class Configuration:
     log_level: str = "INFO"
     working_memory_capacity: int = 64
     working_memory_entry_ttl_seconds: int = 1800
+    ai_enabled: bool = False
+    ai_model: str = ""
+    ai_timeout_seconds: int = 30
 
     # System behavior
     start_with_windows: bool = True

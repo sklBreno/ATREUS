@@ -1,14 +1,17 @@
-"""Unavailable AI availability provider for deterministic local runtime use."""
+"""Unavailable AI Provider for deterministic local runtime use."""
 
+from atreus.ai.exceptions import AIProviderUnavailableError
 from atreus.ai.models import (
     AIProviderAvailability,
     AIProviderAvailabilityState,
+    AIRequest,
+    AIResponse,
 )
-from atreus.interfaces.ai_availability import AIAvailabilityProvider
+from atreus.interfaces.ai_provider import AIProvider
 
 
-class UnavailableAIAvailabilityProvider(AIAvailabilityProvider):
-    """Report that no AI Provider is configured for the current runtime."""
+class UnavailableAIAvailabilityProvider(AIProvider):
+    """Expose a provider-neutral unavailable implementation."""
 
     def availability(self) -> AIProviderAvailability:
         """Return an immutable unavailable-provider snapshot."""
@@ -16,3 +19,7 @@ class UnavailableAIAvailabilityProvider(AIAvailabilityProvider):
             state=AIProviderAvailabilityState.UNAVAILABLE,
             reason_code="provider_not_configured",
         )
+
+    def generate(self, request: AIRequest) -> AIResponse:
+        """Reject generation without exposing configuration details."""
+        raise AIProviderUnavailableError("AI Provider is unavailable.")

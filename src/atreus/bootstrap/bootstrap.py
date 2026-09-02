@@ -1,8 +1,11 @@
 """Production dependency composition for the ATREUS local runtime."""
 
+import os
 from datetime import timedelta
 from pathlib import Path
 
+from atreus.ai.models import REQUEST_INTERPRETER_SERVICE_ID, AIProviderAvailabilityState
+from atreus.ai.request_interpreter import StructuredRequestInterpreter
 from atreus.ai.unavailable_availability import UnavailableAIAvailabilityProvider
 from atreus.capability.contracts import OPEN_APPLICATION_CAPABILITY_ID
 from atreus.capability.open_application import OpenApplicationCapability
@@ -15,6 +18,7 @@ from atreus.decision.decision_engine import DeterministicDecisionEngine
 from atreus.decision.models import DecisionPolicy, UserPolicy
 from atreus.events.event_bus import InProcessEventBus
 from atreus.execution.runtime import InProcessCapabilityRuntime
+from atreus.interfaces.ai_provider import AIProvider
 from atreus.interfaces.application_controller import ApplicationController
 from atreus.interfaces.clock import Clock
 from atreus.interfaces.configuration import ConfigurationProvider
@@ -56,6 +60,7 @@ class Bootstrap:
         permission_grants: tuple[str, ...] = _INTERACTIVE_V0_PERMISSION_GRANTS,
         log_writer: LogWriter | None = None,
         log_path: Path = _OBSERVABILITY_V0_LOG_PATH,
+        ai_provider: AIProvider | None = None,
     ) -> None:
         """Initialize Bootstrap with injectable infrastructure boundaries.
 
@@ -67,6 +72,7 @@ class Bootstrap:
             permission_grants: Explicit grants supplied to Runtime enforcement.
             log_writer: Optional injected structured logging boundary.
             log_path: Local JSON Lines destination used by the default writer.
+            ai_provider: Optional injected provider used instead of composition.
         """
         self._configuration_provider = (
             configuration_provider
@@ -82,6 +88,7 @@ class Bootstrap:
         self._permission_grants = permission_grants
         self._log_writer = log_writer
         self._log_path = log_path
+        self._ai_provider = ai_provider
 
     def run(self) -> Configuration:
         """Initialize and return the foundation runtime configuration.
@@ -147,15 +154,30 @@ class Bootstrap:
             ),
         )
         registry = InMemoryCapabilityRegistry(event_bus)
+        ai_provider = self._compose_ai_provider(configuration, event_bus)
         capability_runtime = InProcessCapabilityRuntime(
             registry=registry,
-            ai_availability_provider=UnavailableAIAvailabilityProvider(),
+            ai_availability_provider=ai_provider,
             cancellation=StaticCancellationSignal(),
             clock=self._clock,
             event_bus=event_bus,
         )
         capability_runtime.load(
             (OpenApplicationCapability(self._application_controller),)
+        )
+        ai_available = (
+            configuration.ai_enabled
+            and ai_provider.availability().state
+            is AIProviderAvailabilityState.AVAILABLE
+        )
+        request_interpreter = (
+            StructuredRequestInterpreter(
+                ai_provider,
+                registry,
+                configuration.ai_timeout_seconds,
+            )
+            if ai_available
+            else None
         )
         started_at = self._clock.now()
         core = Core(
@@ -181,7 +203,10 @@ class Bootstrap:
                 permission_grants=self._permission_grants,
                 blocked_capability_ids=(),
                 allow_interruption=True,
-                allow_delegation=False,
+                allow_delegation=ai_available,
+                delegation_service_id=(
+                    REQUEST_INTERPRETER_SERVICE_ID if ai_available else None
+                ),
             ),
             planning_constraints=PlanningConstraints(
                 allowed_capability_ids=(OPEN_APPLICATION_CAPABILITY_ID,),
@@ -191,5 +216,29 @@ class Bootstrap:
                 require_confirmation=False,
             ),
             execution_timeout_seconds=None,
+            request_interpreter=request_interpreter,
         )
         return InteractiveRuntime(core, self._clock), event_bus
+
+    def _compose_ai_provider(
+        self,
+        configuration: Configuration,
+        event_bus: InProcessEventBus,
+    ) -> AIProvider:
+        if not configuration.ai_enabled:
+            return UnavailableAIAvailabilityProvider()
+        if self._ai_provider is not None:
+            return self._ai_provider
+        api_key = os.environ.get("ATREUS_OPENAI_API_KEY")
+        if api_key is None or not api_key.strip():
+            return UnavailableAIAvailabilityProvider()
+        try:
+            from atreus.ai.openai_provider import OpenAIProvider
+        except ImportError:
+            return UnavailableAIAvailabilityProvider()
+        return OpenAIProvider(
+            api_key=api_key,
+            model_id=configuration.ai_model,
+            clock=self._clock,
+            event_bus=event_bus,
+        )

@@ -4,7 +4,7 @@
 
 **Version:** 1.0
 
-**Last Updated:** 2026-08-17
+**Last Updated:** 2026-09-01
 
 ---
 
@@ -210,6 +210,11 @@ It does not depend on Core, Capability Runtime, System Layer, `MemoryStore`, or
 a concrete AI provider. It consumes only the immutable `MemorySnapshot` data
 contract.
 
+AI Provider V0 does not change this boundary. `RequestInterpretation` is never
+included in `PlanningRequest`, and Core does not invoke Planner as a consequence
+of an AI interpretation. A valid V0 interpretation returns to Decision Engine
+and requires confirmation without creating a plan.
+
 ---
 
 # Events
@@ -301,7 +306,7 @@ Future versions may add conditional steps, parallel execution, output bindings,
 partial replanning, or AI-assisted decomposition after explicit architectural
 approval.
 
-AI-assisted planners must depend on `AIProvider`, preserve deterministic plan
+Future AI-assisted planners must depend on `AIProvider`, preserve deterministic plan
 validation, and remain optional.
 
 ---

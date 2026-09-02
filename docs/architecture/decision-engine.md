@@ -4,7 +4,7 @@
 
 **Version:** 1.1
 
-**Last Updated:** 2026-08-31
+**Last Updated:** 2026-09-01
 
 ---
 
@@ -65,6 +65,8 @@ The engine accepts an immutable `DecisionInput` containing:
 - `user_policy`: Applicable user preferences, grants, and interruption policy.
 - `candidate_capabilities`: Immutable metadata for relevant available
   capabilities, if any.
+- `interpretation`: Optional locally validated `RequestInterpretation` supplied
+  only for the second AI-assisted evaluation.
 
 The Core assembles this input through module interfaces. The Decision Engine
 does not query those modules directly. Version 0 decision policy receives but
@@ -87,7 +89,7 @@ Version 1 supports:
 - `IGNORE`: Take no action because policy or context makes intervention
   inappropriate.
 - `DELEGATE`: Send the request to an identified non-capability service contract,
-  such as the configured AI Provider.
+  such as `ai.request_interpreter`.
 - `REQUEST_PLANNING`: Ask the Planner to transform a high-level goal into a
   plan.
 
@@ -110,6 +112,15 @@ The engine returns an immutable `Decision` containing:
 using the original request.
 
 Human-readable response text is not part of the Decision contract.
+
+AI Provider V0 preserves two explicit evaluations. The first may return
+`DELEGATE(ai.request_interpreter)` only when the deterministic path did not
+resolve the request, the input is eligible for the bounded fallback, and no
+suspicious or multi-action pattern is present. A validated interpretation is
+provided explicitly in the second `DecisionInput`. The second evaluation never
+delegates again and returns `ASK_FOR_CONFIRMATION` for a valid available and
+permitted target. It never returns `EXECUTE` or `REQUEST_PLANNING` from the
+interpretation.
 
 ---
 
@@ -179,6 +190,12 @@ Version 1 evaluates policy in deterministic precedence:
 7. Determine whether the request requires planning.
 8. Select the outcome and reason code.
 
+For the V0 interpreter path, deterministic exact commands retain precedence.
+Eligibility requires one approved application target, one bounded application
+action, and no shell operators, command-injection markers, or additional
+actions. After interpretation, Capability Catalog availability, user blocks,
+permissions, and operational state remain authoritative before confirmation.
+
 An earlier restrictive rule takes precedence over a later permissive rule.
 Conflicting rules must not be resolved by arbitrary registration order.
 
@@ -222,6 +239,10 @@ Immutable Decision
 
 Version 1 decision policy should be deterministic. AI is not required to make
 platform control decisions.
+
+Decision Engine does not invoke AI. It decides whether Core may delegate to the
+Request Interpreter and later evaluates the validated result as untrusted,
+non-executable input.
 
 Platform behavior evaluation uses the same separation:
 

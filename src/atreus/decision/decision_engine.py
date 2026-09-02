@@ -1,7 +1,13 @@
 """Deterministic Version 1 Decision Engine implementation."""
 
+import re
 from uuid import UUID
 
+from atreus.ai.models import (
+    REQUEST_INTERPRETER_SERVICE_ID,
+    AIIntent,
+    RequestInterpretation,
+)
 from atreus.capability.contracts import (
     OPEN_APPLICATION_CAPABILITY_ID,
     OPEN_APPLICATION_COMMAND_TARGETS,
@@ -28,6 +34,45 @@ from atreus.shared.platform import OperationalState, PerformanceProfile
 
 _CONTROLLED_APPLICATION_COMMANDS = frozenset(
     command for command, _ in OPEN_APPLICATION_COMMAND_TARGETS
+)
+_CONTROLLED_APPLICATION_TARGETS = frozenset(
+    target for _, target in OPEN_APPLICATION_COMMAND_TARGETS
+)
+_INTERPRETATION_ACTION_WORDS = frozenset({"launch", "open", "start"})
+_INTERPRETATION_PROHIBITED_WORDS = frozenset(
+    {
+        "and",
+        "also",
+        "before",
+        "close",
+        "cmd",
+        "delete",
+        "erase",
+        "execute",
+        "after",
+        "powershell",
+        "remove",
+        "restart",
+        "run",
+        "script",
+        "shutdown",
+        "stop",
+        "terminal",
+        "then",
+    }
+)
+_SHELL_OPERATOR_MARKERS = (
+    "&&",
+    "||",
+    "|",
+    ";",
+    "\n",
+    "\r",
+    "&",
+    ">",
+    "<",
+    "`",
+    "$(",
 )
 
 
@@ -112,6 +157,11 @@ class DeterministicDecisionEngine(DecisionEngine):
             if metadata.availability.state
             is CapabilityAvailabilityState.AVAILABLE
         )
+        if decision_input.interpretation is not None:
+            return self._evaluate_interpretation(
+                decision_input,
+                candidates,
+            )
         explicitly_targeted = self._explicitly_targeted_capabilities(
             decision_input.request.content,
             candidates,
@@ -136,6 +186,17 @@ class DeterministicDecisionEngine(DecisionEngine):
             RequestType.INTENTION,
             RequestType.TASK,
         )
+        if (
+            candidates
+            and not explicitly_targeted
+            and self._can_delegate_for_interpretation(decision_input)
+        ):
+            return Decision(
+                request_id,
+                DecisionOutcome.DELEGATE,
+                REQUEST_INTERPRETER_SERVICE_ID,
+                "bounded_request_interpretation_required",
+            )
         if candidates and capability_request and not explicitly_targeted:
             return Decision(
                 request_id,
@@ -233,6 +294,92 @@ class DeterministicDecisionEngine(DecisionEngine):
             self._single_target(permitted),
             "no_execution_route_selected",
         )
+
+    @staticmethod
+    def _evaluate_interpretation(
+        decision_input: DecisionInput,
+        candidates: tuple[CapabilityMetadata, ...],
+    ) -> Decision:
+        interpretation = decision_input.interpretation
+        if interpretation is None:
+            raise InconsistentDecisionInputError(
+                "Interpretation evaluation requires an interpretation."
+            )
+        matching = tuple(
+            metadata
+            for metadata in candidates
+            if metadata.identifier == interpretation.capability_id
+        )
+        if not matching or (
+            interpretation.intent_id is not AIIntent.OPEN_APPLICATION
+            or interpretation.capability_id != OPEN_APPLICATION_CAPABILITY_ID
+            or interpretation.target_id not in _CONTROLLED_APPLICATION_TARGETS
+        ):
+            return Decision(
+                decision_input.request.request_id,
+                DecisionOutcome.IGNORE,
+                None,
+                "interpreted_target_unavailable",
+            )
+        capability = matching[0]
+        if capability.identifier in decision_input.user_policy.blocked_capability_ids:
+            return Decision(
+                decision_input.request.request_id,
+                DecisionOutcome.IGNORE,
+                None,
+                "capability_blocked_by_user_policy",
+            )
+        if not set(capability.permissions).issubset(
+            decision_input.user_policy.permission_grants
+        ):
+            return Decision(
+                decision_input.request.request_id,
+                DecisionOutcome.IGNORE,
+                None,
+                "required_permission_missing",
+            )
+        if (
+            decision_input.platform_state.operational_state
+            is OperationalState.STANDBY
+        ):
+            return Decision(
+                decision_input.request.request_id,
+                DecisionOutcome.IGNORE,
+                None,
+                "operational_state_standby",
+            )
+        return Decision(
+            decision_input.request.request_id,
+            DecisionOutcome.ASK_FOR_CONFIRMATION,
+            capability.identifier,
+            "ai_interpretation_requires_confirmation",
+        )
+
+    @staticmethod
+    def _can_delegate_for_interpretation(
+        decision_input: DecisionInput,
+    ) -> bool:
+        if (
+            not decision_input.user_policy.allow_delegation
+            or decision_input.user_policy.delegation_service_id
+            != REQUEST_INTERPRETER_SERVICE_ID
+            or decision_input.classification.request_type
+            not in {RequestType.COMMAND, RequestType.INTENTION, RequestType.QUESTION}
+        ):
+            return False
+        content = decision_input.request.content.casefold()
+        if len(content) > 500 or any(
+            marker in content for marker in _SHELL_OPERATOR_MARKERS
+        ):
+            return False
+        words = tuple(re.findall(r"[a-z0-9.]+", content))
+        if any(word in _INTERPRETATION_PROHIBITED_WORDS for word in words):
+            return False
+        action_count = sum(word in _INTERPRETATION_ACTION_WORDS for word in words)
+        targets = {
+            word for word in words if word in _CONTROLLED_APPLICATION_TARGETS
+        }
+        return action_count == 1 and len(targets) == 1
 
     @staticmethod
     def _decide_command(
@@ -345,6 +492,14 @@ class DeterministicDecisionEngine(DecisionEngine):
         if len(identifiers) != len(set(identifiers)):
             raise InconsistentDecisionInputError(
                 "Candidate capability identifiers must be unique."
+            )
+        interpretation = decision_input.interpretation
+        if interpretation is not None and (
+            not isinstance(interpretation, RequestInterpretation)
+            or interpretation.request_id != decision_input.request.request_id
+        ):
+            raise InconsistentDecisionInputError(
+                "Interpretation request identity does not match DecisionInput."
             )
 
     @staticmethod

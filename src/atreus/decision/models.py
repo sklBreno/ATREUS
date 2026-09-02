@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from uuid import UUID
 
+from atreus.ai.models import RequestInterpretation
 from atreus.capability.models import CapabilityMetadata
 from atreus.context.models import ContextSnapshot
 from atreus.events.models import Event
@@ -58,6 +59,7 @@ class DecisionInput:
     platform_state: PlatformStateSnapshot
     user_policy: UserPolicy
     candidate_capabilities: tuple[CapabilityMetadata, ...]
+    interpretation: RequestInterpretation | None = None
 
 
 @dataclass(frozen=True, slots=True)

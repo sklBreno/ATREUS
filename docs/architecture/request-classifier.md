@@ -4,7 +4,7 @@
 
 **Version:** 1.0
 
-**Last Updated:** 2026-08-17
+**Last Updated:** 2026-09-01
 
 ---
 
@@ -136,9 +136,10 @@ Version 1 should prefer deterministic rules for clear commands, questions, and
 task patterns. Classification strategies may be composed, but their precedence
 must be deterministic and covered by tests.
 
-AI-based classification is not required in Version 1. A future implementation
-may use an `AIProvider` abstraction only as a bounded fallback; it must not make
-the classifier dependent on a specific provider.
+AI Provider V0 does not change classification. The classifier remains entirely
+local and deterministic. After classification, Decision Engine may ask Core to
+invoke a separate bounded `RequestInterpreter`; that service does not alter the
+`ClassifiedRequest`.
 
 ---
 
@@ -225,15 +226,16 @@ The classifier processes only the content needed for classification. It does
 not persist requests, and it must not log raw content by default. Events expose
 only classification metadata.
 
-Any future AI fallback requires explicit privacy policy and must use the
-provider abstraction without sending unnecessary context.
+The V0 Request Interpreter receives only the original Request after an explicit
+Decision Engine outcome. It receives no Context or Working Memory through the
+classifier.
 
 ---
 
 # Future Evolution
 
-Future versions may add new request types, personalized strategies, multilingual
-classification, or an AI-backed fallback after the architecture is updated.
+Future versions may add new request types, personalized strategies, or
+multilingual classification after the architecture is updated.
 
 Adding a request type is a contract change and requires coordinated updates to
 Decision Engine policy and tests.

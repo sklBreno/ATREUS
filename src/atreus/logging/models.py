@@ -20,3 +20,5 @@ class StructuredLogRecord:
     execution_status: str | None = None
     reason_code: str | None = None
     lifecycle_state: str | None = None
+    provider_id: str | None = None
+    model_id: str | None = None

@@ -2,9 +2,9 @@
 
 **Status:** Draft
 
-**Version:** 1.0
+**Version:** 1.1
 
-**Last Updated:** 2026-08-31
+**Last Updated:** 2026-09-01
 
 ---
 
@@ -26,7 +26,7 @@ An AI Provider implementation is responsible for:
 - Reporting current provider availability.
 - Accepting provider-neutral AI requests.
 - Translating those requests into its internal provider format.
-- Enforcing request deadlines and cancellation.
+- Enforcing bounded request timeouts.
 - Translating provider responses into a stable ATREUS response contract.
 - Normalizing provider-specific failures.
 - Reporting provider and model identity for diagnostics.
@@ -59,13 +59,14 @@ AI Provider is not responsible for:
 
 - `ai_request_id`: Unique AI operation identifier.
 - `request_id`: Correlated platform request identifier.
+- `purpose`: Approved bounded use of the provider.
 - `instruction`: Explicit description of the requested AI operation.
 - `content`: Input content for the operation.
-- `context`: Immutable, minimal collection of approved `AIContextItem` values.
 - `timeout_seconds`: Positive execution deadline.
 
-`AIContextItem` contains a stable name and an immutable textual value. Callers
-must select and minimize context before constructing the request.
+AI Provider V0 defines only `REQUEST_INTERPRETATION`. `instruction` and
+`content` are excluded from representations. Context and Working Memory are not
+part of `AIRequest` and are not disclosed to the provider in V0.
 
 Provider-specific fields such as model names, deployment identifiers, sampling
 parameters, SDK objects, or API request classes are not part of the public
@@ -85,11 +86,7 @@ future contracts.
 - `content`: Text returned by the provider.
 - `provider_id`: Diagnostic identifier of the active implementation.
 - `model_id`: Diagnostic model identifier when available.
-- `usage`: Optional provider-neutral `AIUsage` metrics.
 - `completed_at`: UTC completion timestamp.
-
-`AIUsage` may contain input and output unit counts when the provider exposes
-them. Consumers must not require usage data for correctness.
 
 Provider identity is observational metadata. Consumers must not branch business
 logic based on a vendor name.
@@ -125,6 +122,28 @@ vendor client directly.
 Version 1 supports one active provider implementation at a time. Provider
 selection and fallback chains require separate future architecture.
 
+# Request Interpreter V0
+
+`RequestInterpreter` is the bounded service used by Core after Decision Engine
+returns `DELEGATE(ai.request_interpreter)`. It accepts the original immutable
+`Request`, invokes `AIProvider` at most once, validates the structured output,
+and maps the approved intent to a local capability identifier.
+
+V0 accepts only:
+
+- Intent `OPEN_APPLICATION`.
+- Targets already approved by the controlled application contract.
+
+The provider may return only `intent_id`, `target_id`, and `confidence`. It
+cannot provide executable names, paths, command lines, permission grants,
+capability identifiers, shell content, or arbitrary arguments. The interpreter
+maps `OPEN_APPLICATION` to `application.open` locally and verifies current
+Capability Catalog availability before returning `RequestInterpretation`.
+
+The interpretation is non-executable. Core submits it to a second Decision
+Engine evaluation, which requires user confirmation in V0. Planner, Capability
+Runtime, and System Layer never receive the interpretation.
+
 ---
 
 # Internal Flow
@@ -148,6 +167,14 @@ Response or Error Normalization
 AIResponse
 ```
 
+The OpenAI V0 adapter uses the official SDK Responses API with strict JSON
+Schema Structured Outputs. The schema rejects additional fields and constrains
+the intent, approved targets, and confidence range. The interpreter validates
+the decoded response again because provider output remains untrusted.
+
+No tools, web search, file search, MCP integration, shell, or executable
+function is supplied to the model. Automatic SDK retries are disabled in V0.
+
 Provider adapters contain integration details. No provider SDK types cross the
 adapter boundary.
 
@@ -163,7 +190,9 @@ client, but those dependencies remain internal to the adapter. They must be
 injected and replaceable.
 
 AI Provider does not depend on Core, Planner, Memory, Context Engine, Capability
-Registry, Capability Runtime, or System Layer.
+Registry, Capability Runtime, or System Layer. The Request Interpreter may
+depend on the read-only Capability Catalog to validate the approved local
+mapping before returning an interpretation.
 
 Capabilities that require AI receive the `AIProvider` abstraction through
 dependency injection.
@@ -219,8 +248,9 @@ errors for:
 - Authentication failure.
 - Rate limiting.
 - Timeout.
-- Cancellation.
-- Invalid provider response.
+- Network failure.
+- Malformed provider response.
+- Invalid structured output.
 - Internal provider failure.
 
 Concrete vendor exceptions never cross the public boundary. Normalized errors
@@ -275,9 +305,16 @@ Credentials remain inside the concrete adapter's approved secret-loading
 boundary and must never appear in configuration objects, requests, events,
 errors, or logs.
 
-Callers send only the minimum approved content and context. Provider adapters
-must not add hidden user data. External processing must remain transparent and
-subject to user preferences.
+V0 reads only `ATREUS_OPENAI_API_KEY` from the process environment during
+Bootstrap composition. The value is injected into the OpenAI adapter and is
+never copied into `Configuration`, `.env.example`, provider representations, or
+public diagnostics. `ai_enabled`, `ai_model`, and `ai_timeout_seconds` are the
+only public non-secret AI settings.
+
+Callers send only the minimum approved request content. Context and Working
+Memory are excluded from AI Provider V0. Provider adapters must not add hidden
+user data. External processing must remain transparent and subject to user
+preferences.
 
 Local-first behavior is preferred when it satisfies the requirement, but the
 architecture does not mandate a permanent provider type.
@@ -286,9 +323,9 @@ architecture does not mandate a permanent provider type.
 
 # Future Evolution
 
-Future versions may add streaming, structured output, embeddings, tool calling,
-multiple providers, fallback policy, local model lifecycle, or cost controls
-after each contract is documented.
+Future versions may add streaming, other structured purposes, embeddings, tool
+calling, multiple providers, fallback policy, local model lifecycle, or cost
+controls after each contract is documented.
 
 Such evolution must preserve provider replaceability and keep AI outside the
 Core.

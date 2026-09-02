@@ -4,7 +4,7 @@
 
 **Version:** 1.1
 
-**Last Updated:** 2026-08-17
+**Last Updated:** 2026-09-01
 
 ---
 
@@ -33,19 +33,20 @@ Request Classifier ──classification──> Core
                 │                        │                         │
                 ▼                        ▼                         ▼
          Context Engine           Decision Engine              Planner
-                ▲                        │                         │
-                │                        │                         ▼
-          System Layer                   │              Capability Registry
-                                         │                         ▲
-                                         ▼                         │
-                                  Capability Runtime ──────────────┘
-                                         │
-                         ┌───────────────┴───────────────┐
-                         ▼                               ▼
-                 Capability Code                  AI Provider
-                         │
-                         ▼
-                    System Layer
+                ▲                    │       ▲                      │
+                │                    │       │ validated            ▼
+          System Layer              │       │ interpretation  Capability Registry
+                                    ▼       │                      ▲
+                             Request Interpreter                  │
+                                    │                             │
+                                    ▼                             │
+                                AI Provider              Capability Runtime
+                                                                  │
+                                                                  ▼
+                                                           Capability Code
+                                                                  │
+                                                                  ▼
+                                                             System Layer
 
 Working Memory provides bounded process-local snapshots where explicitly
 required.
@@ -212,6 +213,12 @@ processing when deterministic capabilities are insufficient.
 Concrete providers are replaceable. ATREUS must continue operating in a reduced
 but predictable mode when AI is unavailable.
 
+AI Provider V0 is used only through `RequestInterpreter` for strict structured
+interpretation of the approved `OPEN_APPLICATION` intent. Deterministic
+commands remain local and make no AI request. A valid interpretation returns to
+Decision Engine and requires confirmation; it never reaches Planner,
+Capability Runtime, or System Layer.
+
 ---
 
 # Operational State
@@ -273,9 +280,8 @@ Version 1 does not include an interactive permission-grant system.
 
 # AI Credentials
 
-AI Provider credentials enter through approved environment or configuration
-loading during bootstrap. They are injected into the selected concrete provider
-adapter.
+AI Provider V0 reads `ATREUS_OPENAI_API_KEY` only from the process environment
+during bootstrap. It is injected into the selected concrete provider adapter.
 
 Credentials are never hardcoded, persisted by AI Provider, included in public
 configuration snapshots, or written to logs, events, errors, requests, or
@@ -301,7 +307,14 @@ Decision Engine
     │
     ├── EXECUTE ───────────────> Capability Runtime
     ├── REQUEST_PLANNING ──────> Planner ──> Core ──> Capability Runtime
-    ├── DELEGATE ──────────────> AI Provider or another explicit service
+    ├── DELEGATE ──────────────> Request Interpreter
+    │                                │ one bounded AI request
+    │                                ▼
+    │                           AI Provider
+    │                                │ validated interpretation
+    │                                ▼
+    │                    Core ──> Decision Engine
+    │                                └── ASK_FOR_CONFIRMATION in V0
     ├── ASK_FOR_CONFIRMATION ──> User interaction boundary
     ├── SUGGEST ───────────────> User interaction boundary
     └── IGNORE ────────────────> No action
@@ -344,6 +357,8 @@ Dependencies point toward abstractions and remain acyclic:
 - Planner depends on the read-only Capability Catalog and Event Bus.
 - Capability Runtime depends on Capability Registry, AI availability, and Event
   Bus.
+- Request Interpreter depends on AI Provider and the read-only Capability
+  Catalog.
 - Capability implementations may depend on narrow System Layer or AI Provider
   interfaces.
 - Domain modules do not depend on Core.
