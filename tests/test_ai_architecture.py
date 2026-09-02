@@ -29,6 +29,23 @@ def test_system_layer_has_no_ai_or_openai_dependency() -> None:
     assert "RequestInterpreter" not in system_source
 
 
+def test_conversation_responder_has_no_execution_or_stateful_dependencies() -> None:
+    source = (ROOT / "src/atreus/ai/conversation_responder.py").read_text(
+        encoding="utf-8"
+    )
+    imports = "\n".join(
+        line for line in source.splitlines() if line.startswith(("from ", "import "))
+    )
+
+    assert "planner" not in imports.casefold()
+    assert "capability_runtime" not in imports.casefold()
+    assert "execution" not in imports.casefold()
+    assert "system." not in imports.casefold()
+    assert "context" not in imports.casefold()
+    assert "memory" not in imports.casefold()
+    assert "openai" not in imports.casefold()
+
+
 def test_openai_sdk_is_isolated_to_concrete_adapter() -> None:
     importing_files = tuple(
         path.relative_to(ROOT).as_posix()

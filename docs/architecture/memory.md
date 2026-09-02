@@ -38,6 +38,10 @@ request content, conversation text, plan, capability arguments, complete
 capability results, exceptions, credentials, context snapshots, or log records
 are stored automatically.
 
+Conversational AI V0 is stateless and receives no `MemorySnapshot`. Neither its
+requests nor its responses are written to Working Memory. Conversation history
+and continuity remain separate future architecture.
+
 ---
 
 # Responsibilities

@@ -51,3 +51,15 @@ class InvalidRequestInterpretationError(RequestInterpretationException):
 
 class InterpretationTargetUnavailableError(RequestInterpretationException):
     """Raised when the approved capability target is unavailable."""
+
+
+class ConversationResponseException(Exception):
+    """Base exception for stateless conversational response failures."""
+
+
+class InvalidConversationResponseError(ConversationResponseException):
+    """Raised when provider output cannot become a safe text response."""
+
+
+class ConversationUnavailableError(ConversationResponseException):
+    """Raised when no AI Provider can answer a general conversation request."""

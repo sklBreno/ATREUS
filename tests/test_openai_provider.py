@@ -83,6 +83,20 @@ def make_request() -> AIRequest:
         "Return approved structured output.",
         "Please open calculator",
         12,
+        128,
+    )
+
+
+def make_conversation_request() -> AIRequest:
+    """Create one bounded free-text request for adapter tests."""
+    return AIRequest(
+        uuid4(),
+        uuid4(),
+        AIRequestPurpose.CONVERSATIONAL_RESPONSE,
+        "Answer safely in English.",
+        "What is RAM?",
+        12,
+        512,
     )
 
 
@@ -111,6 +125,7 @@ def test_openai_adapter_uses_strict_schema_without_tools() -> None:
     assert client.timeout == 12
     assert client.create_arguments is not None
     assert client.create_arguments["model"] == "test-model"
+    assert client.create_arguments["max_output_tokens"] == 128
     assert "tools" not in client.create_arguments
     text = cast(dict[str, object], client.create_arguments["text"])
     output_format = cast(dict[str, object], text["format"])
@@ -136,6 +151,20 @@ def test_openai_adapter_uses_strict_schema_without_tools() -> None:
     assert "command" not in properties
 
 
+def test_openai_adapter_uses_plain_text_without_tools_for_conversation() -> None:
+    client = FakeOpenAIClient("RAM is short-term working storage.")
+    request = make_conversation_request()
+
+    response = make_provider(client).generate(request)
+
+    assert response.content == "RAM is short-term working storage."
+    assert client.create_arguments is not None
+    assert client.create_arguments["max_output_tokens"] == 512
+    assert "text" not in client.create_arguments
+    assert "tools" not in client.create_arguments
+    assert "tool_choice" not in client.create_arguments
+
+
 def test_openai_adapter_publishes_sanitized_lifecycle_events() -> None:
     event_bus = InProcessEventBus()
     started: list[AIRequestStarted] = []
@@ -149,6 +178,8 @@ def test_openai_adapter_publishes_sanitized_lifecycle_events() -> None:
     assert len(started) == len(completed) == 1
     assert started[0].request_id == request.request_id
     assert completed[0].model_id == "test-model"
+    assert started[0].purpose is AIRequestPurpose.REQUEST_INTERPRETATION
+    assert completed[0].purpose is AIRequestPurpose.REQUEST_INTERPRETATION
     serialized = repr((started[0], completed[0]))
     assert request.content not in serialized
     assert request.instruction not in serialized

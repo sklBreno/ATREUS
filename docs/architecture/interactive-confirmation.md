@@ -158,6 +158,12 @@ Capability Runtime, System Layer, Working Memory, Context Engine, and AI
 Provider do not depend on the coordinator. Working Memory does not store pending
 confirmation state.
 
+Conversational AI is independent of confirmation. A conversational response is
+non-executable and never creates a pending authorization. Exact confirmation
+responses retain precedence over conversational delegation, and both paths use
+the same deterministic interaction-language contract without asking AI to
+resolve language.
+
 ---
 
 # Events and Privacy

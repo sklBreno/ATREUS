@@ -118,6 +118,7 @@ class EventLogObserver:
                 **request_common,
                 level="INFO",
                 provider_id=event.provider_id,
+                ai_request_purpose=event.purpose.value,
                 message="AI Provider request started.",
             )
         if isinstance(event, AIRequestCompleted):
@@ -126,6 +127,7 @@ class EventLogObserver:
                 level="INFO",
                 provider_id=event.provider_id,
                 model_id=event.model_id,
+                ai_request_purpose=event.purpose.value,
                 message="AI Provider request completed.",
             )
         if isinstance(event, AIRequestFailed):
@@ -134,6 +136,7 @@ class EventLogObserver:
                 level="ERROR",
                 provider_id=event.provider_id,
                 reason_code=event.error_code,
+                ai_request_purpose=event.purpose.value,
                 message="AI Provider request failed.",
             )
         if isinstance(event, RequestReceived):

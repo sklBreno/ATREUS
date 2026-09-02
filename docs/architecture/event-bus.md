@@ -105,7 +105,8 @@ Examples:
 - The Planner owns `PlanCreated`.
 - The Capability Runtime owns capability execution events.
 - The AI Provider owns `AIRequestStarted`, `AIRequestCompleted`, and
-  `AIRequestFailed`.
+  `AIRequestFailed`. Each includes the approved AI request purpose.
+- Conversational AI V0 publishes no conversation-specific event.
 - Interactive Confirmation V0 publishes no domain events. Existing
   `DecisionMade`, `RequestCompleted`, and sanitized `ErrorOccurred` events
   describe its request-level effects without raw confirmation content.
@@ -275,10 +276,11 @@ context signals must not be included unless an approved contract explicitly
 requires them. Logging must identify event type and correlation metadata without
 serializing sensitive payloads by default.
 
-AI Provider V0 lifecycle events contain only correlation identifiers, provider
-and model identifiers where applicable, duration, and a sanitized error code.
-They never contain instruction, request content, raw response, credential, SDK
-exception message, Context, or Working Memory.
+AI Provider V0 lifecycle events contain only correlation identifiers, request
+purpose, provider and model identifiers where applicable, duration, and a
+sanitized error code. They never contain instruction, request content,
+conversation text, raw response, credential, SDK exception message, Context, or
+Working Memory.
 
 Subscribers must not mutate shared state embedded in events.
 

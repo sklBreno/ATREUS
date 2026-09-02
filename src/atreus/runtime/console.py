@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 
+from atreus.ai.models import CONVERSATION_RESPONDER_SERVICE_ID
 from atreus.core.models import CoreRequestResult
 from atreus.decision.models import DecisionOutcome
 from atreus.execution.models import CapabilityExecutionStatus
@@ -113,6 +114,9 @@ class InteractiveConsole(ForegroundInterface):
 
     @staticmethod
     def _format_result(result: CoreRequestResult) -> str:
+        conversational_response = result.conversational_response
+        if conversational_response is not None:
+            return conversational_response.text
         prompt = result.confirmation_prompt
         if prompt is not None:
             application_name = _APPLICATION_DISPLAY_NAMES[prompt.language][
@@ -162,5 +166,9 @@ class InteractiveConsole(ForegroundInterface):
         if result.decision.outcome is DecisionOutcome.SUGGEST:
             return "No action was taken."
         if result.decision.outcome is DecisionOutcome.DELEGATE:
+            if result.decision.target == CONVERSATION_RESPONDER_SERVICE_ID:
+                if result.interaction_language is InteractionLanguage.EN_US:
+                    return "I can't generate a response right now."
+                return "No momento não consigo gerar uma resposta."
             return "That request requires an unavailable service."
         return "Confirmation is required before I can act."

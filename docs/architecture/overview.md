@@ -50,6 +50,8 @@ Request Classifier ──classification──> Core
 
 Working Memory provides bounded process-local snapshots where explicitly
 required.
+Conversation Responder provides bounded stateless text through AI Provider and
+never enters Planner, Capability Runtime, or System Layer.
 Configuration provides validated settings during bootstrap.
 Domain modules publish immutable facts through the Event Bus.
 ```
@@ -213,12 +215,22 @@ processing when deterministic capabilities are insufficient.
 Concrete providers are replaceable. ATREUS must continue operating in a reduced
 but predictable mode when AI is unavailable.
 
-AI Provider is used only through `RequestInterpreter` for strict structured
-interpretation of the approved `OPEN_APPLICATION` and `APPLICATION_STATUS`
-intents. Deterministic application-open commands remain local and make no AI
-request. Provider output is untrusted and returns to local validation before a
-typed `ApplicationAction` reaches Decision Engine. AI never authorizes, plans,
-or executes a capability.
+AI Provider is used through `RequestInterpreter` for strict structured
+interpretation of approved `OPEN_APPLICATION` and `APPLICATION_STATUS` intents,
+and through `ConversationResponder` for bounded stateless text. Deterministic
+application-open commands remain local and make no AI request. Provider output
+is untrusted and returns to local validation before a typed `ApplicationAction`
+reaches Decision Engine. Conversational output is non-executable and goes only
+to the foreground interface. AI never authorizes, plans, or executes a
+capability.
+
+## Conversational AI
+
+Conversational AI V0 answers eligible questions and conversation in Brazilian
+Portuguese or English. Stable identity, capability, unsupported-capability, and
+secret-refusal responses are deterministic. General responses use one bounded
+AI request with no tools, Context, Working Memory, conversation history, web,
+filesystem, or execution access.
 
 ## Interactive Confirmation
 
@@ -328,7 +340,7 @@ Decision Engine
     ├── EXECUTE ───────────────> Capability Runtime
     ├── REQUEST_PLANNING ──────> Planner ──> Core ──> Capability Runtime
     ├── DELEGATE ──────────────> Request Interpreter
-    │                                │ one bounded AI request
+    │                                │ one bounded structured AI request
     │                                ▼
     │                           AI Provider
     │                                │ validated interpretation
@@ -336,6 +348,11 @@ Decision Engine
     │                    Core ──> Decision Engine
     │                                ├── ASK_FOR_CONFIRMATION for OPEN
     │                                └── REQUEST_PLANNING for STATUS
+    ├── DELEGATE ──────────────> Conversation Responder
+    │                                │ local self-knowledge or one bounded
+    │                                │ plain-text AI request
+    │                                ▼
+    │                         User-facing text only
     ├── ASK_FOR_CONFIRMATION ──> Confirmation Coordinator
     │                                │ structured prompt and later exact input
     │                                ▼
@@ -389,6 +406,8 @@ Dependencies point toward abstractions and remain acyclic:
 - Capability Runtime depends on Capability Registry, AI availability, and Event
   Bus.
 - Request Interpreter depends on AI Provider and the read-only Capability
+  Catalog.
+- Conversation Responder depends on AI Provider and the read-only Capability
   Catalog.
 - Capability implementations may depend on narrow System Layer or AI Provider
   interfaces.

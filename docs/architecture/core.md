@@ -171,8 +171,8 @@ Core then coordinates this deterministic Version 1 sequence:
 3. Initialize bounded Working Memory.
 4. Initialize the process-local Interactive Confirmation coordinator.
 5. Initialize System Layer adapters.
-6. Initialize the configured AI Provider and bounded Request Interpreter, if
-   available.
+6. Initialize the configured AI Provider, bounded Request Interpreter when
+   available, and stateless Conversation Responder.
 7. Initialize Capability Registry.
 8. Initialize Capability Runtime and load trusted local capabilities.
 9. Seal Capability Registry after dependency validation.
@@ -221,11 +221,12 @@ Decision Engine returns Decision
     │                         Capability Runtime
     ├── DELEGATE ──────────────> Explicit service interface
     │                                │
-    │                   Request Interpreter may return one validated
-    │                   non-executable interpretation
-    │                                │
-    │                                ▼
-    │                    second Decision Engine evaluation
+    │                ┌───────────────┴────────────────┐
+    │                ▼                                ▼
+    │       Request Interpreter             Conversation Responder
+    │                │                                │
+    │                ▼                                ▼
+    │       second Decision evaluation      user-facing text only
     ├── ASK_FOR_CONFIRMATION ──> User interaction boundary
     ├── SUGGEST ───────────────> User interaction boundary
     └── IGNORE ────────────────> No action
@@ -260,6 +261,18 @@ capability. A validated open action requires confirmation; a validated
 read-only status action may proceed to planning. Core does not loop, interpret
 provider output, or forward `RequestInterpretation` to Planner or Capability
 Runtime.
+
+For eligible questions and conversation, Decision Engine may instead return
+`DELEGATE(ai.conversation_responder)`. Core calls the injected
+`ConversationResponder` at most once with the original request and resolved
+interaction language. It validates response correlation and language, then
+returns the immutable response to the foreground boundary. This path does not
+invoke Planner, Capability Runtime, or System Layer, and it cannot execute an
+action. Core supplies neither Context nor Working Memory to the responder.
+
+Operational actions and confirmation resolution retain precedence over
+conversation. Core does not generate conversational text, define assistant
+self-knowledge, or maintain conversation history.
 
 When the second evaluation returns `ASK_FOR_CONFIRMATION`, Core passes the exact
 validated `ApplicationAction` to the injected `ConfirmationCoordinator`. The
@@ -341,6 +354,7 @@ Core communicates through interfaces with:
 - System Layer services.
 - AI Provider.
 - Request Interpreter.
+- Conversation Responder.
 - Confirmation Coordinator.
 - Interaction Language Resolver.
 - Capability Registry and Capability Catalog.

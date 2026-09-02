@@ -63,17 +63,20 @@ AI Provider is not responsible for:
 - `instruction`: Explicit description of the requested AI operation.
 - `content`: Input content for the operation.
 - `timeout_seconds`: Positive execution deadline.
+- `max_output_tokens`: Positive purpose-specific output bound.
 
-AI Provider V0 defines only `REQUEST_INTERPRETATION`. `instruction` and
-`content` are excluded from representations. Context and Working Memory are not
-part of `AIRequest` and are not disclosed to the provider in V0.
+AI Provider V0 defines `REQUEST_INTERPRETATION` and
+`CONVERSATIONAL_RESPONSE`. `instruction` and `content` are excluded from
+representations. Context and Working Memory are not part of `AIRequest` and are
+not disclosed to the provider in V0.
 
 Provider-specific fields such as model names, deployment identifiers, sampling
 parameters, SDK objects, or API request classes are not part of the public
 contract.
 
-Version 1 requests one bounded textual response. Streaming and tool calling are
-future contracts.
+Version 1 requests one bounded textual response. Request interpretation uses a
+small structured-output budget. Conversational generation uses at most 512
+output tokens. Streaming and tool calling are future contracts.
 
 ---
 
@@ -156,6 +159,30 @@ required, and Planner; it is never reconstructed from raw text.
 
 ---
 
+# Conversation Responder V0
+
+`ConversationResponder` is the stateless service used by Core after Decision
+Engine returns `DELEGATE(ai.conversation_responder)`. It answers stable identity,
+capability, unsupported-capability, and secret-disclosure requests locally. For
+other eligible questions and conversation, it invokes `AIProvider` at most once
+with `CONVERSATIONAL_RESPONSE`.
+
+The responder derives its minimal capability summary from the authoritative
+local action matrix and current Capability Catalog. It does not ask AI what
+ATREUS can do and never exposes executable names, paths, process details,
+permissions, or native-system mappings.
+
+Conversational generation is plain text, bounded to 512 output tokens, and has
+no tools, web, filesystem, shell, Planner, Capability Runtime, or System Layer
+access. Its result is user-facing text only. It cannot execute an action, create
+a plan, grant permission, or claim that an action ran.
+
+Context and Working Memory are not supplied to the responder or provider.
+Version 0 retains no conversation history. See
+`docs/architecture/conversational-ai.md`.
+
+---
+
 # Internal Flow
 
 ```text
@@ -177,12 +204,17 @@ Response or Error Normalization
 AIResponse
 ```
 
-The OpenAI adapter uses the official SDK Responses API with strict JSON
-Schema Structured Outputs. The schema rejects additional fields and constrains
-the two approved intents, approved targets, and confidence range. It contains
-no capability, executable, process, PID, path, argument, or command field. The
-interpreter validates the decoded response again because provider output
-remains untrusted and may name a locally unsupported intent-target combination.
+For `REQUEST_INTERPRETATION`, the OpenAI adapter uses the official SDK Responses
+API with strict JSON Schema Structured Outputs. The schema rejects additional
+fields and constrains the two approved intents, approved targets, and confidence
+range. It contains no capability, executable, process, PID, path, argument, or
+command field. The interpreter validates the decoded response again because
+provider output remains untrusted and may name a locally unsupported
+intent-target combination.
+
+For `CONVERSATIONAL_RESPONSE`, the same adapter requests bounded plain text and
+does not supply the interpretation schema. Purpose dispatch remains internal to
+the adapter; provider SDK types do not cross the public contract.
 
 No tools, web search, file search, MCP integration, shell, or executable
 function is supplied to the model. Automatic SDK retries are disabled in V0.
@@ -229,6 +261,7 @@ AI Provider owns:
 - `ai_request_id`.
 - `request_id`.
 - `provider_id`.
+- `purpose`.
 
 ## `AIRequestCompleted`
 
@@ -237,6 +270,7 @@ AI Provider owns:
 - `provider_id`.
 - `model_id` when available.
 - Duration and optional usage metrics.
+- `purpose`.
 
 ## `AIRequestFailed`
 
@@ -244,6 +278,7 @@ AI Provider owns:
 - Correlation identifiers.
 - `provider_id`.
 - Sanitized error code.
+- `purpose`.
 
 Events must not contain instructions, content, context values, credentials, or
 response text.
@@ -296,6 +331,12 @@ Natural Language Actions tests additionally cover strict intent and target
 enums, rejection of extra or native fields, unsupported local combinations,
 one provider call per eligible request, mandatory confirmation for open, and
 direct read-only planning for status.
+
+Conversational AI tests additionally cover purpose-specific plain-text
+translation, deterministic bilingual self-knowledge, safe capability summaries,
+secret refusal, one provider call for eligible general conversation, bounded
+output, unavailable and failing providers, and absence of tools or content in
+events and logs.
 
 ---
 
