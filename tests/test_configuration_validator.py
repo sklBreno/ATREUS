@@ -7,7 +7,7 @@ from atreus.configuration.loader import ConfigurationLoader
 from atreus.configuration.validator import ConfigurationValidator
 
 
-def _valid_values() -> dict[str, str | bool | int]:
+def _valid_values() -> dict[str, object]:
     return ConfigurationLoader(env_file_path=None, environment={}).load()
 
 
@@ -71,3 +71,23 @@ def test_validator_requires_model_only_when_ai_is_enabled() -> None:
 
     with pytest.raises(ConfigurationValidationError, match="ai_model"):
         ConfigurationValidator().validate(enabled_values)
+
+
+@pytest.mark.parametrize(
+    "permission_grants",
+    (
+        ("application.read", "application.read"),
+        ("application.read", ""),
+        (" application.read",),
+        ("application.read ",),
+        ("application.read", 1),
+    ),
+)
+def test_validator_rejects_invalid_permission_grants(
+    permission_grants: tuple[object, ...],
+) -> None:
+    values = _valid_values()
+    values["permission_grants"] = permission_grants
+
+    with pytest.raises(ConfigurationValidationError, match="permission grants"):
+        ConfigurationValidator().validate(values)

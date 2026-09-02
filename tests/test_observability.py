@@ -32,13 +32,14 @@ from atreus.runtime.models import (
     RuntimeStopped,
     RuntimeStopping,
 )
-from atreus.system.windows_application_controller import (
-    WindowsApplicationController,
+from atreus.system.windows_application_launcher import (
+    WindowsApplicationLauncher,
 )
 from tests.support import (
     NOW,
     FixedClock,
-    RecordingApplicationController,
+    RecordingApplicationLauncher,
+    RecordingApplicationStateReader,
     RecordingLogWriter,
 )
 
@@ -264,7 +265,8 @@ def test_runtime_failure_log_is_structured_and_sanitized(tmp_path: Path) -> None
 
     host = Bootstrap(
         configuration_provider=make_configuration_manager(),
-        application_controller=RecordingApplicationController(),
+        application_launcher=RecordingApplicationLauncher(),
+        application_state_reader=RecordingApplicationStateReader(),
         clock=FixedClock(),
         log_path=log_path,
     ).compose_host(fail_input, lambda output: None)
@@ -292,10 +294,11 @@ def test_bootstrap_logs_correlated_success_without_sensitive_data(
     tmp_path: Path,
 ) -> None:
     log_path = tmp_path / "logs" / "atreus.log"
-    controller = RecordingApplicationController()
+    controller = RecordingApplicationLauncher()
     runtime = Bootstrap(
         configuration_provider=make_configuration_manager(),
-        application_controller=controller,
+        application_launcher=controller,
+        application_state_reader=RecordingApplicationStateReader(),
         clock=FixedClock(),
         log_path=log_path,
     ).compose()
@@ -330,21 +333,27 @@ def test_failed_execution_is_sanitized_and_uses_configured_level(
 ) -> None:
     log_path = tmp_path / "atreus.log"
     commands: list[tuple[str, ...]] = []
-    controller = WindowsApplicationController(
-        lambda command: commands.append(command) or 1234,
+
+    def fail_to_start(command: tuple[str, ...]) -> int:
+        commands.append(command)
+        raise OSError("private native launch detail")
+
+    controller = WindowsApplicationLauncher(
+        fail_to_start,
         "win32",
     )
     runtime = Bootstrap(
         configuration_provider=make_configuration_manager("ERROR"),
-        application_controller=controller,
+        application_launcher=controller,
+        application_state_reader=RecordingApplicationStateReader(),
         clock=FixedClock(),
         log_path=log_path,
     ).compose()
 
-    result = runtime.submit("open spotify")
+    result = runtime.submit("open calculator")
 
     assert result.execution_results[0].status is CapabilityExecutionStatus.FAILED
-    assert commands == []
+    assert commands == [("calc.exe",)]
     records = read_json_lines(log_path)
     assert [record["event_type"] for record in records] == [
         "CapabilityExecutionFailed",
@@ -353,15 +362,18 @@ def test_failed_execution_is_sanitized_and_uses_configured_level(
     assert records[0]["execution_status"] == "FAILED"
     assert records[0]["reason_code"] == "capability_execution_failed"
     assert all(record["level"] == "ERROR" for record in records)
-    assert "spotify" not in log_path.read_text(encoding="utf-8")
+    serialized = log_path.read_text(encoding="utf-8")
+    assert "calculator" not in serialized
+    assert "private native launch detail" not in serialized
 
 
 def test_non_executing_decision_logs_no_capability_lifecycle() -> None:
-    controller = RecordingApplicationController()
+    controller = RecordingApplicationLauncher()
     writer = RecordingLogWriter()
     runtime = Bootstrap(
         configuration_provider=make_configuration_manager(),
-        application_controller=controller,
+        application_launcher=controller,
+        application_state_reader=RecordingApplicationStateReader(),
         clock=FixedClock(),
         log_writer=writer,
     ).compose()
@@ -387,10 +399,11 @@ def test_logging_write_failure_does_not_break_request_pipeline() -> None:
             """Fail without exposing record contents."""
             raise OSError("private logging failure")
 
-    controller = RecordingApplicationController()
+    controller = RecordingApplicationLauncher()
     runtime = Bootstrap(
         configuration_provider=make_configuration_manager(),
-        application_controller=controller,
+        application_launcher=controller,
+        application_state_reader=RecordingApplicationStateReader(),
         clock=FixedClock(),
         log_writer=FailingLogWriter(),
     ).compose()

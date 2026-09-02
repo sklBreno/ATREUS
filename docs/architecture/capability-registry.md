@@ -101,6 +101,15 @@ stores identifiers but does not interpret or grant them.
 An empty permission collection means the capability requires no privileged
 platform operation. It does not bypass general user-control policy.
 
+Natural Language Actions V1 registers two separate application capabilities:
+
+- `application.open` requires `application.control`.
+- `application.status` requires `application.read`.
+
+The Registry stores these stable identifiers and metadata only. It does not
+contain the intent-target action matrix, executable names, native process
+names, paths, PIDs, or Windows-specific mappings.
+
 ---
 
 # Dependency Rules

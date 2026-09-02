@@ -8,17 +8,17 @@ import pytest
 from atreus.ai.exceptions import InvalidRequestInterpretationError
 from atreus.ai.models import (
     REQUEST_INTERPRETER_SERVICE_ID,
-    AIIntent,
     AIProviderAvailability,
     AIProviderAvailabilityState,
     RequestInterpretation,
 )
+from atreus.application.models import ApplicationAction, ApplicationIntent
+from atreus.capability.contracts import CapabilityArgument
 from atreus.capability.open_application import OpenApplicationCapability
 from atreus.capability.registry import InMemoryCapabilityRegistry
 from atreus.capability.system_snapshot import SystemSnapshotCapability
 from atreus.confirmation.coordinator import InMemoryConfirmationCoordinator
 from atreus.confirmation.models import (
-    ConfirmationAction,
     ConfirmationResolution,
     PendingConfirmation,
 )
@@ -55,7 +55,7 @@ from atreus.execution.models import (
 from atreus.execution.runtime import InProcessCapabilityRuntime
 from atreus.interaction.language import DeterministicInteractionLanguageResolver
 from atreus.interaction.models import InteractionLanguage
-from atreus.interfaces.application_controller import ApplicationController
+from atreus.interfaces.application_launcher import ApplicationLauncher
 from atreus.interfaces.capability import Capability
 from atreus.interfaces.capability_runtime import CapabilityRuntime
 from atreus.interfaces.confirmation import ConfirmationCoordinator
@@ -88,12 +88,16 @@ from atreus.shared.platform import (
     PlatformStateSnapshot,
 )
 from atreus.shared.request import Request
-from atreus.system.models import SystemOperationContext, SystemSnapshot
+from atreus.system.models import (
+    ApplicationIdentifier,
+    SystemOperationContext,
+    SystemSnapshot,
+)
 from atreus.system.system_information import UnavailableSystemInformationProvider
 from tests.support import (
     NOW,
     FixedClock,
-    RecordingApplicationController,
+    RecordingApplicationLauncher,
     StaticAIAvailabilityProvider,
     StaticContextProvider,
     StaticMemorySnapshotProvider,
@@ -124,7 +128,7 @@ def build_core(
     planner: Planner | None = None,
     require_confirmation: bool = False,
     system_information: SystemInformationProvider | None = None,
-    application_controller: ApplicationController | None = None,
+    application_launcher: ApplicationLauncher | None = None,
     user_policy: UserPolicy | None = None,
     context_provider: ContextProvider | None = None,
     memory_snapshot_provider: MemorySnapshotProvider | None = None,
@@ -137,7 +141,7 @@ def build_core(
     clock = FixedClock()
     selected_context_provider = context_provider or make_context_provider()
     registry = InMemoryCapabilityRegistry(event_bus)
-    if application_controller is None:
+    if application_launcher is None:
         system_provider = (
             system_information or UnavailableSystemInformationProvider(clock)
         )
@@ -145,7 +149,7 @@ def build_core(
         default_permission_grants = ("system.metrics.read",)
         allowed_capability_ids = ("system.snapshot",)
     else:
-        capabilities = (OpenApplicationCapability(application_controller),)
+        capabilities = (OpenApplicationCapability(application_launcher),)
         default_permission_grants = ("application.control",)
         allowed_capability_ids = ("application.open",)
     runtime = InProcessCapabilityRuntime(
@@ -231,9 +235,11 @@ class RecordingRequestInterpreter(RequestInterpreter):
             raise self._error
         return RequestInterpretation(
             request.request_id,
-            AIIntent.OPEN_APPLICATION,
-            "application.open",
-            "calculator",
+            ApplicationAction(
+                ApplicationIntent.OPEN_APPLICATION,
+                "application.open",
+                ApplicationIdentifier.CALCULATOR,
+            ),
             0.9,
         )
 
@@ -244,7 +250,7 @@ class FailingConfirmationCoordinator(ConfirmationCoordinator):
     def begin(
         self,
         original_request_id: UUID,
-        action: ConfirmationAction,
+        action: ApplicationAction,
         language: InteractionLanguage,
     ) -> PendingConfirmation:
         """Reject creation outside this failure test."""
@@ -285,6 +291,7 @@ class RecordingTwoPhaseDecisionEngine(DecisionEngine):
             DecisionOutcome.ASK_FOR_CONFIRMATION,
             "application.open",
             "ai_interpretation_requires_confirmation",
+            decision_input.interpretation.action,
         )
 
     def decide_platform_behavior(
@@ -344,6 +351,41 @@ class RecordingPlanner(Planner):
                 ),
             ),
             required_permissions=(),
+            requires_confirmation=False,
+        )
+
+
+class RecordingApplicationPlanner(Planner):
+    """Record one application action while creating a matching plan."""
+
+    def __init__(self) -> None:
+        """Initialize an empty planning request collection."""
+        self.requests: list[PlanningRequest] = []
+
+    def create_plan(self, request: PlanningRequest) -> Plan:
+        """Record and structure the exact application action received."""
+        self.requests.append(request)
+        if request.action is None:
+            raise AssertionError("Application action is required.")
+        return Plan(
+            plan_id=request.planning_id,
+            request_id=request.request_id,
+            goal=request.goal,
+            steps=(
+                PlanStep(
+                    step_id="step-1",
+                    capability_id=request.action.capability_id,
+                    arguments=(
+                        CapabilityArgument(
+                            "application_id",
+                            request.action.application_id.value,
+                        ),
+                    ),
+                    depends_on=(),
+                    requires_confirmation=False,
+                ),
+            ),
+            required_permissions=("application.control",),
             requires_confirmation=False,
         )
 
@@ -598,12 +640,12 @@ def test_core_does_not_execute_unrelated_command() -> None:
     assert result.execution_results == ()
 
 
-@pytest.mark.parametrize("application_id", ("calculator", "notepad", "spotify"))
+@pytest.mark.parametrize("application_id", ("calculator", "notepad"))
 def test_core_opens_application_through_complete_controlled_pipeline(
     application_id: str,
 ) -> None:
-    controller = RecordingApplicationController(process_id=2468)
-    core, _ = build_core(application_controller=controller)
+    controller = RecordingApplicationLauncher(process_id=2468)
+    core, _ = build_core(application_launcher=controller)
 
     result = core.handle_request(make_request(f"open {application_id}"))
 
@@ -622,6 +664,19 @@ def test_core_opens_application_through_complete_controlled_pipeline(
     assert len(controller.calls) == 1
 
 
+def test_core_rejects_explicitly_unsupported_spotify_open() -> None:
+    controller = RecordingApplicationLauncher()
+    core, _ = build_core(application_launcher=controller)
+
+    result = core.handle_request(make_request("open spotify"))
+
+    assert result.decision.outcome is DecisionOutcome.IGNORE
+    assert result.decision.reason_code == "application_action_unsupported"
+    assert result.plan is None
+    assert result.execution_results == ()
+    assert controller.calls == []
+
+
 @pytest.mark.parametrize(
     "content",
     (
@@ -634,8 +689,8 @@ def test_core_opens_application_through_complete_controlled_pipeline(
     ),
 )
 def test_core_rejects_unrelated_desktop_commands(content: str) -> None:
-    controller = RecordingApplicationController()
-    core, _ = build_core(application_controller=controller)
+    controller = RecordingApplicationLauncher()
+    core, _ = build_core(application_launcher=controller)
 
     result = core.handle_request(make_request(content))
 
@@ -646,12 +701,12 @@ def test_core_rejects_unrelated_desktop_commands(content: str) -> None:
 
 
 def test_core_uses_one_interpretation_and_second_decision_without_execution() -> None:
-    controller = RecordingApplicationController()
+    controller = RecordingApplicationLauncher()
     interpreter = RecordingRequestInterpreter()
     context_provider = make_context_provider()
     memory_provider = StaticMemorySnapshotProvider()
     core, event_bus = build_core(
-        application_controller=controller,
+        application_launcher=controller,
         context_provider=context_provider,
         memory_snapshot_provider=memory_provider,
         request_interpreter=interpreter,
@@ -680,13 +735,42 @@ def test_core_uses_one_interpretation_and_second_decision_without_execution() ->
     assert memory_provider.call_count == 1
 
 
+def test_core_preserves_exact_ai_action_through_confirmation_and_planning() -> None:
+    launcher = RecordingApplicationLauncher()
+    interpreter = RecordingRequestInterpreter()
+    planner = RecordingApplicationPlanner()
+    core, _ = build_core(
+        application_launcher=launcher,
+        planner=planner,
+        request_interpreter=interpreter,
+        user_policy=UserPolicy(
+            permission_grants=("application.control",),
+            blocked_capability_ids=(),
+            allow_interruption=True,
+            allow_delegation=True,
+            delegation_service_id=REQUEST_INTERPRETER_SERVICE_ID,
+        ),
+    )
+
+    initial = core.handle_request(make_request("abre a calculadora pra mim"))
+    accepted = core.handle_request(make_request("sim"))
+
+    assert initial.decision.action is not None
+    assert accepted.decision.action is initial.decision.action
+    assert planner.requests[0].action is initial.decision.action
+    assert accepted.execution_results[0].status is (
+        CapabilityExecutionStatus.SUCCEEDED
+    )
+    assert len(launcher.calls) == 1
+
+
 def test_core_reuses_context_and_memory_across_both_decisions() -> None:
     interpreter = RecordingRequestInterpreter()
     decision_engine = RecordingTwoPhaseDecisionEngine()
     context_provider = make_context_provider()
     memory_provider = StaticMemorySnapshotProvider()
     core, _ = build_core(
-        application_controller=RecordingApplicationController(),
+        application_launcher=RecordingApplicationLauncher(),
         context_provider=context_provider,
         memory_snapshot_provider=memory_provider,
         request_interpreter=interpreter,
@@ -710,9 +794,9 @@ def test_confirmation_flow_captures_context_and_memory_once_per_request() -> Non
     interpreter = RecordingRequestInterpreter()
     context_provider = make_context_provider()
     memory_provider = StaticMemorySnapshotProvider()
-    controller = RecordingApplicationController()
+    controller = RecordingApplicationLauncher()
     core, _ = build_core(
-        application_controller=controller,
+        application_launcher=controller,
         context_provider=context_provider,
         memory_snapshot_provider=memory_provider,
         request_interpreter=interpreter,
@@ -744,10 +828,10 @@ def test_confirmation_flow_captures_context_and_memory_once_per_request() -> Non
 def test_core_deterministic_application_commands_make_zero_ai_calls(
     content: str,
 ) -> None:
-    controller = RecordingApplicationController()
+    controller = RecordingApplicationLauncher()
     interpreter = RecordingRequestInterpreter()
     core, _ = build_core(
-        application_controller=controller,
+        application_launcher=controller,
         request_interpreter=interpreter,
         user_policy=UserPolicy(
             ("application.control",),
@@ -769,9 +853,9 @@ def test_interpreter_failure_is_sanitized_and_never_executes() -> None:
     interpreter = RecordingRequestInterpreter(
         InvalidRequestInterpretationError(private_detail)
     )
-    controller = RecordingApplicationController()
+    controller = RecordingApplicationLauncher()
     core, event_bus = build_core(
-        application_controller=controller,
+        application_launcher=controller,
         request_interpreter=interpreter,
         user_policy=UserPolicy(
             ("application.control",),
@@ -795,9 +879,9 @@ def test_interpreter_failure_is_sanitized_and_never_executes() -> None:
 
 
 def test_confirmation_coordinator_failure_is_sanitized_before_execution() -> None:
-    controller = RecordingApplicationController()
+    controller = RecordingApplicationLauncher()
     core, event_bus = build_core(
-        application_controller=controller,
+        application_launcher=controller,
         confirmation_coordinator=FailingConfirmationCoordinator(),
     )
     errors: list[ErrorOccurred] = []

@@ -64,7 +64,8 @@ Context Engine / Capability Implementations
     ├── ProcessService
     ├── FileSystemService
     ├── SystemInformationProvider
-    ├── ApplicationController
+    ├── ApplicationLauncher
+    ├── ApplicationStateReader
     └── PowerStateProvider
              │
              ▼
@@ -199,41 +200,45 @@ that are unnecessary for adaptive performance.
 
 ---
 
-## Application Controller
+## Application Boundaries
 
-`ApplicationController` exposes:
+Natural Language Actions V1 uses two narrow interfaces:
 
 ```python
-class ApplicationController(ABC):
-    def active_application(
-        self,
-        context: SystemOperationContext,
-    ) -> ApplicationInfo | None: ...
-
-    def list_running_applications(
-        self,
-        limit: int,
-        context: SystemOperationContext,
-    ) -> tuple[ApplicationInfo, ...]: ...
-
+class ApplicationLauncher(ABC):
     def launch(
         self,
         request: ApplicationLaunchRequest,
         context: SystemOperationContext,
     ) -> ApplicationInstance: ...
 
-    def close(
+
+class ApplicationStateReader(ABC):
+    def read_status(
         self,
-        instance_id: str,
+        request: ApplicationStatusRequest,
         context: SystemOperationContext,
-    ) -> None: ...
+    ) -> ApplicationStatusResult: ...
 ```
 
-Application identifiers are resolved through trusted local configuration or
-capability code. Arbitrary shell command strings are not application
-identifiers.
+Both requests contain only an approved platform-neutral
+`ApplicationIdentifier`. Neither interface accepts executable paths, process
+names, PIDs, command lines, shell syntax, or arbitrary user input.
 
-Observation and control require separate permissions.
+The Windows launcher uses fixed internal mappings for Calculator and Notepad
+and invokes `subprocess.Popen` with `shell=False`. The Windows state reader uses
+one fixed `tasklist.exe` command with `shell=False`, then compares the complete
+observation only against internal approved process identities. Incomplete
+evidence returns `UNKNOWN` rather than a false `NOT_RUNNING` result.
+
+Spotify has no approved launch or status mapping in V1. Unsupported approved
+identifiers fail through `UnsupportedSystemOperationError` before native work.
+Close, focus, minimize, maximize, PID lookup, arbitrary process inspection, and
+generic process execution are not exposed by these application interfaces.
+
+Application observation requires `application.read`; launch requires
+`application.control`. Capability Runtime checks grants first and the System
+Layer enforces them again at this boundary.
 
 ---
 
@@ -374,6 +379,10 @@ Each adapter has contract tests covering:
 - Result and event immutability.
 - Sensitive data exclusion.
 - Absence of business decisions.
+- Fixed Calculator and Notepad launch and status identities.
+- `UNKNOWN` when application-state evidence is incomplete.
+- Spotify rejection without native invocation.
+- `shell=False` and absence of user-derived native commands or process names.
 
 Unit tests use fake native adapters and do not modify the developer's real
 system. Operating-system integration tests run only in an isolated, explicitly

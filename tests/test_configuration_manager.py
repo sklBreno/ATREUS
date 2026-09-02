@@ -18,6 +18,8 @@ def test_manager_creates_configuration_from_loaded_values() -> None:
             "ATREUS_AI_ENABLED": "true",
             "ATREUS_AI_MODEL": "test-model",
             "ATREUS_AI_TIMEOUT_SECONDS": "20",
+            "ATREUS_CONFIRMATION_TTL_SECONDS": "75",
+            "ATREUS_PERMISSION_GRANTS": "application.read",
         },
     )
 
@@ -30,6 +32,8 @@ def test_manager_creates_configuration_from_loaded_values() -> None:
     assert configuration.ai_enabled is True
     assert configuration.ai_model == "test-model"
     assert configuration.ai_timeout_seconds == 20
+    assert configuration.confirmation_ttl_seconds == 75
+    assert configuration.permission_grants == ("application.read",)
 
 
 def test_manager_returns_same_configuration_instance() -> None:

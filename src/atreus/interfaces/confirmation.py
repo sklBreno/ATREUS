@@ -3,8 +3,8 @@
 from abc import ABC, abstractmethod
 from uuid import UUID
 
+from atreus.application.models import ApplicationAction
 from atreus.confirmation.models import (
-    ConfirmationAction,
     ConfirmationResolution,
     PendingConfirmation,
 )
@@ -18,7 +18,7 @@ class ConfirmationCoordinator(ABC):
     def begin(
         self,
         original_request_id: UUID,
-        action: ConfirmationAction,
+        action: ApplicationAction,
         language: InteractionLanguage,
     ) -> PendingConfirmation:
         """Create one pending confirmation when the slot is available."""

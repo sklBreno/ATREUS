@@ -9,7 +9,7 @@ from typing import cast
 from atreus.configuration.configuration import Configuration
 from atreus.configuration.exceptions import ConfigurationLoadError
 
-type ConfigurationValue = str | bool | int
+type ConfigurationValue = str | bool | int | tuple[str, ...]
 
 _ENVIRONMENT_VARIABLES = {
     "app_name": "ATREUS_APP_NAME",
@@ -25,6 +25,7 @@ _ENVIRONMENT_VARIABLES = {
     "ai_model": "ATREUS_AI_MODEL",
     "ai_timeout_seconds": "ATREUS_AI_TIMEOUT_SECONDS",
     "confirmation_ttl_seconds": "ATREUS_CONFIRMATION_TTL_SECONDS",
+    "permission_grants": "ATREUS_PERMISSION_GRANTS",
     "start_with_windows": "ATREUS_START_WITH_WINDOWS",
     "always_on": "ATREUS_ALWAYS_ON",
 }
@@ -41,6 +42,7 @@ _INTEGER_FIELDS = {
     "ai_timeout_seconds",
     "confirmation_ttl_seconds",
 }
+_TUPLE_FIELDS = {"permission_grants"}
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 _FALSE_VALUES = {"0", "false", "no", "off"}
 
@@ -162,6 +164,10 @@ class ConfigurationLoader:
 
     @staticmethod
     def _parse_value(field_name: str, value: str) -> ConfigurationValue:
+        if field_name in _TUPLE_FIELDS:
+            if not value.strip():
+                return ()
+            return tuple(item.strip() for item in value.split(","))
         if field_name not in _BOOLEAN_FIELDS:
             if field_name not in _INTEGER_FIELDS:
                 return value

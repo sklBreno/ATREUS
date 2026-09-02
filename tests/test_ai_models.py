@@ -13,12 +13,13 @@ from atreus.ai.exceptions import (
     InvalidRequestInterpretationError,
 )
 from atreus.ai.models import (
-    AIIntent,
     AIRequest,
     AIRequestPurpose,
     AIResponse,
     RequestInterpretation,
 )
+from atreus.application.models import ApplicationAction, ApplicationIntent
+from atreus.system.models import ApplicationIdentifier
 
 NOW = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
 
@@ -96,8 +97,10 @@ def test_request_interpretation_rejects_invalid_confidence(
     with pytest.raises(InvalidRequestInterpretationError):
         RequestInterpretation(
             uuid4(),
-            AIIntent.OPEN_APPLICATION,
-            "application.open",
-            "calculator",
+            ApplicationAction(
+                ApplicationIntent.OPEN_APPLICATION,
+                "application.open",
+                ApplicationIdentifier.CALCULATOR,
+            ),
             confidence,
         )

@@ -213,11 +213,12 @@ processing when deterministic capabilities are insufficient.
 Concrete providers are replaceable. ATREUS must continue operating in a reduced
 but predictable mode when AI is unavailable.
 
-AI Provider V0 is used only through `RequestInterpreter` for strict structured
-interpretation of the approved `OPEN_APPLICATION` intent. Deterministic
-commands remain local and make no AI request. A valid interpretation returns to
-Decision Engine and requires confirmation; it never reaches Planner,
-Capability Runtime, or System Layer.
+AI Provider is used only through `RequestInterpreter` for strict structured
+interpretation of the approved `OPEN_APPLICATION` and `APPLICATION_STATUS`
+intents. Deterministic application-open commands remain local and make no AI
+request. Provider output is untrusted and returns to local validation before a
+typed `ApplicationAction` reaches Decision Engine. AI never authorizes, plans,
+or executes a capability.
 
 ## Interactive Confirmation
 
@@ -232,6 +233,11 @@ An exact acceptance returns to Decision Engine, then Planner receives a typed
 approved action. Capability Runtime and System Layer remain independent and
 retain their existing enforcement responsibilities. Working Memory does not
 store confirmation state, and V0 publishes no confirmation-specific events.
+
+Natural Language Actions V1 also supports read-only `APPLICATION_STATUS`
+requests through `application.status`. Status actions do not require
+confirmation. The local typed action matrix, not AI, selects capability
+identifiers and rejects unsupported combinations such as Spotify status.
 
 ---
 
@@ -328,7 +334,8 @@ Decision Engine
     │                                │ validated interpretation
     │                                ▼
     │                    Core ──> Decision Engine
-    │                                └── ASK_FOR_CONFIRMATION in V0
+    │                                ├── ASK_FOR_CONFIRMATION for OPEN
+    │                                └── REQUEST_PLANNING for STATUS
     ├── ASK_FOR_CONFIRMATION ──> Confirmation Coordinator
     │                                │ structured prompt and later exact input
     │                                ▼
@@ -340,6 +347,11 @@ Decision Engine
 Core correlates results, captures one stable Working Memory snapshot, publishes
 request lifecycle events, and returns the response.
 ```
+
+One immutable `ApplicationAction` is preserved through interpretation,
+Decision Engine, confirmation when required, and Planner. Capability Runtime
+remains generic, while application launch and state observation stay behind
+narrow System Layer interfaces.
 
 Classification never selects or invokes the destination. Planner never invokes
 capabilities. Capability Runtime never decides the next workflow step.

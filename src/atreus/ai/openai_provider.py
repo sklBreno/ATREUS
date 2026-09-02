@@ -21,7 +21,6 @@ from atreus.ai.exceptions import (
     AIRequestTimeoutError,
 )
 from atreus.ai.models import (
-    AIIntent,
     AIProviderAvailability,
     AIProviderAvailabilityState,
     AIRequest,
@@ -31,21 +30,20 @@ from atreus.ai.models import (
     AIRequestStarted,
     AIResponse,
 )
-from atreus.capability.contracts import OPEN_APPLICATION_COMMAND_TARGETS
+from atreus.application.models import ApplicationIntent
 from atreus.interfaces.ai_provider import AIProvider
 from atreus.interfaces.clock import Clock
 from atreus.interfaces.event_bus import EventBus
+from atreus.system.models import ApplicationIdentifier
 
 _PROVIDER_ID = "openai"
-_APPROVED_TARGET_IDS = [
-    target_id for _, target_id in OPEN_APPLICATION_COMMAND_TARGETS
-]
+_APPROVED_TARGET_IDS = [application_id.value for application_id in ApplicationIdentifier]
 _REQUEST_INTERPRETATION_SCHEMA = {
     "type": "object",
     "properties": {
         "intent_id": {
             "type": "string",
-            "enum": [AIIntent.OPEN_APPLICATION.value],
+            "enum": [intent.value for intent in ApplicationIntent],
         },
         "target_id": {
             "type": "string",

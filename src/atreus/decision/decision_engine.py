@@ -5,13 +5,14 @@ from uuid import UUID
 
 from atreus.ai.models import (
     REQUEST_INTERPRETER_SERVICE_ID,
-    AIIntent,
     RequestInterpretation,
 )
-from atreus.capability.contracts import (
-    OPEN_APPLICATION_CAPABILITY_ID,
-    OPEN_APPLICATION_COMMAND_TARGETS,
+from atreus.application.contracts import (
+    deterministic_application_action,
+    deterministic_application_action_definition,
+    is_supported_application_action,
 )
+from atreus.application.models import ApplicationIntent
 from atreus.capability.models import (
     CapabilityAvailabilityState,
     CapabilityMetadata,
@@ -36,14 +37,21 @@ from atreus.interfaces.event_bus import EventBus
 from atreus.request_classifier.models import RequestType
 from atreus.shared.platform import OperationalState, PerformanceProfile
 
-_CONTROLLED_APPLICATION_COMMANDS = frozenset(
-    command for command, _ in OPEN_APPLICATION_COMMAND_TARGETS
-)
-_CONTROLLED_APPLICATION_TARGETS = frozenset(
-    target for _, target in OPEN_APPLICATION_COMMAND_TARGETS
-)
 _INTERPRETATION_ACTION_WORDS = frozenset(
-    {"abre", "abra", "abrir", "launch", "open", "start"}
+    {
+        "abre",
+        "aberta",
+        "aberto",
+        "abra",
+        "abrir",
+        "está",
+        "launch",
+        "open",
+        "rodando",
+        "running",
+        "start",
+        "status",
+    }
 )
 _INTERPRETATION_PROHIBITED_WORDS = frozenset(
     {
@@ -55,8 +63,14 @@ _INTERPRETATION_PROHIBITED_WORDS = frozenset(
         "delete",
         "erase",
         "execute",
+        "exe",
         "after",
+        "allowlist",
+        "ignore",
+        "kill",
+        "pid",
         "powershell",
+        "process",
         "remove",
         "restart",
         "run",
@@ -71,6 +85,7 @@ _INTERPRETATION_PROHIBITED_WORDS = frozenset(
         "e",
         "excluir",
         "fechar",
+        "ignorar",
         "reiniciar",
         "rodar",
         "tambem",
@@ -106,6 +121,9 @@ _SHELL_OPERATOR_MARKERS = (
     "<",
     "`",
     "$(",
+    ":\\",
+    "/",
+    ".exe",
 )
 
 
@@ -199,6 +217,16 @@ class DeterministicDecisionEngine(DecisionEngine):
             return self._evaluate_interpretation(
                 decision_input,
                 candidates,
+            )
+        deterministic_definition = deterministic_application_action_definition(
+            decision_input.request.content
+        )
+        if deterministic_definition is not None and not deterministic_definition.supported:
+            return Decision(
+                request_id,
+                DecisionOutcome.IGNORE,
+                None,
+                "application_action_unsupported",
             )
         explicitly_targeted = self._explicitly_targeted_capabilities(
             decision_input.request.content,
@@ -319,6 +347,8 @@ class DeterministicDecisionEngine(DecisionEngine):
             request_type in (RequestType.QUESTION, RequestType.CONVERSATION)
             and decision_input.user_policy.allow_delegation
             and decision_input.user_policy.delegation_service_id
+            and decision_input.user_policy.delegation_service_id
+            != REQUEST_INTERPRETER_SERVICE_ID
         ):
             return Decision(
                 request_id,
@@ -373,9 +403,8 @@ class DeterministicDecisionEngine(DecisionEngine):
         )
         if (
             not matching
-            or action.intent_id is not AIIntent.OPEN_APPLICATION
-            or action.capability_id != OPEN_APPLICATION_CAPABILITY_ID
-            or action.target_id.value not in _CONTROLLED_APPLICATION_TARGETS
+            or action.intent_id is not ApplicationIntent.OPEN_APPLICATION
+            or not is_supported_application_action(action)
         ):
             return Decision(
                 decision_input.request.request_id,
@@ -415,6 +444,7 @@ class DeterministicDecisionEngine(DecisionEngine):
             DecisionOutcome.REQUEST_PLANNING,
             action.capability_id,
             "confirmed_action_requires_explicit_plan",
+            action,
         )
 
     @staticmethod
@@ -427,16 +457,13 @@ class DeterministicDecisionEngine(DecisionEngine):
             raise InconsistentDecisionInputError(
                 "Interpretation evaluation requires an interpretation."
             )
+        action = interpretation.action
         matching = tuple(
             metadata
             for metadata in candidates
-            if metadata.identifier == interpretation.capability_id
+            if metadata.identifier == action.capability_id
         )
-        if not matching or (
-            interpretation.intent_id is not AIIntent.OPEN_APPLICATION
-            or interpretation.capability_id != OPEN_APPLICATION_CAPABILITY_ID
-            or interpretation.target_id not in _CONTROLLED_APPLICATION_TARGETS
-        ):
+        if not matching or not is_supported_application_action(action):
             return Decision(
                 decision_input.request.request_id,
                 DecisionOutcome.IGNORE,
@@ -470,11 +497,27 @@ class DeterministicDecisionEngine(DecisionEngine):
                 None,
                 "operational_state_standby",
             )
+        if action.intent_id is ApplicationIntent.OPEN_APPLICATION:
+            return Decision(
+                decision_input.request.request_id,
+                DecisionOutcome.ASK_FOR_CONFIRMATION,
+                capability.identifier,
+                "ai_interpretation_requires_confirmation",
+                action,
+            )
+        if action.intent_id is ApplicationIntent.APPLICATION_STATUS:
+            return Decision(
+                decision_input.request.request_id,
+                DecisionOutcome.REQUEST_PLANNING,
+                capability.identifier,
+                "read_only_action_requires_explicit_plan",
+                action,
+            )
         return Decision(
             decision_input.request.request_id,
-            DecisionOutcome.ASK_FOR_CONFIRMATION,
-            capability.identifier,
-            "ai_interpretation_requires_confirmation",
+            DecisionOutcome.IGNORE,
+            None,
+            "interpreted_action_unsupported",
         )
 
     @staticmethod
@@ -511,7 +554,7 @@ class DeterministicDecisionEngine(DecisionEngine):
             cue in normalized_content for cue in _INTERPRETATION_SEMANTIC_CUES
         )
         return len(targets) == 1 and (
-            action_count == 1 or (action_count == 0 and semantic_cue)
+            action_count in {1, 2} or (action_count == 0 and semantic_cue)
         )
 
     @staticmethod
@@ -534,15 +577,15 @@ class DeterministicDecisionEngine(DecisionEngine):
                 "multiple_capability_targets",
             )
         if (
-            permitted[0].identifier == OPEN_APPLICATION_CAPABILITY_ID
-            and DeterministicDecisionEngine._normalize_request(request_content)
-            in _CONTROLLED_APPLICATION_COMMANDS
+            (action := deterministic_application_action(request_content)) is not None
+            and permitted[0].identifier == action.capability_id
         ):
             return Decision(
                 request_id,
                 DecisionOutcome.REQUEST_PLANNING,
-                OPEN_APPLICATION_CAPABILITY_ID,
+                action.capability_id,
                 "command_requires_explicit_plan",
+                action,
             )
         return Decision(
             request_id,
@@ -585,11 +628,8 @@ class DeterministicDecisionEngine(DecisionEngine):
         normalized_request = DeterministicDecisionEngine._normalize_request(
             request_content
         )
-        resolved_target = (
-            OPEN_APPLICATION_CAPABILITY_ID
-            if normalized_request in _CONTROLLED_APPLICATION_COMMANDS
-            else None
-        )
+        action = deterministic_application_action(normalized_request)
+        resolved_target = action.capability_id if action is not None else None
         return tuple(
             metadata
             for metadata in candidates

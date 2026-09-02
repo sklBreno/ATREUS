@@ -136,10 +136,17 @@ Version 1 should prefer deterministic rules for clear commands, questions, and
 task patterns. Classification strategies may be composed, but their precedence
 must be deterministic and covered by tests.
 
-AI Provider V0 does not change classification. The classifier remains entirely
+AI Provider integration does not change classification. The classifier remains entirely
 local and deterministic. After classification, Decision Engine may ask Core to
 invoke a separate bounded `RequestInterpreter`; that service does not alter the
 `ClassifiedRequest`.
+
+Natural Language Actions V1 does not add intent or capability selection to the
+classifier. Phrases about opening an approved application or reading its status
+still receive only a request type and confidence here. Decision Engine owns the
+narrow safety eligibility check, and the local interpreter owns untrusted
+structured-output validation. Deterministic exact open commands remain local
+zero-AI paths.
 
 ---
 
@@ -226,7 +233,7 @@ The classifier processes only the content needed for classification. It does
 not persist requests, and it must not log raw content by default. Events expose
 only classification metadata.
 
-The V0 Request Interpreter receives only the original Request after an explicit
+The bounded Request Interpreter receives only the original Request after an explicit
 Decision Engine outcome. It receives no Context or Working Memory through the
 classifier.
 

@@ -26,6 +26,10 @@ class Configuration:
     ai_model: str = ""
     ai_timeout_seconds: int = 30
     confirmation_ttl_seconds: int = 120
+    permission_grants: tuple[str, ...] = (
+        "application.control",
+        "application.read",
+    )
 
     # System behavior
     start_with_windows: bool = True

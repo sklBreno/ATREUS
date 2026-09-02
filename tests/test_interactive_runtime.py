@@ -7,12 +7,13 @@ import pytest
 from atreus.__main__ import main
 from atreus.bootstrap.bootstrap import Bootstrap
 from atreus.runtime.console import InteractiveConsole
-from atreus.system.windows_application_controller import (
-    WindowsApplicationController,
+from atreus.system.windows_application_launcher import (
+    WindowsApplicationLauncher,
 )
 from tests.support import (
     FixedClock,
-    RecordingApplicationController,
+    RecordingApplicationLauncher,
+    RecordingApplicationStateReader,
     RecordingLogWriter,
 )
 
@@ -34,11 +35,12 @@ class InputSequence:
 def build_console(
     inputs: tuple[str, ...],
     *,
-    controller: RecordingApplicationController | None = None,
+    controller: RecordingApplicationLauncher | None = None,
 ) -> tuple[InteractiveConsole, InputSequence, list[str]]:
     """Compose a production console with controlled system and I/O boundaries."""
     runtime = Bootstrap(
-        application_controller=controller or RecordingApplicationController(),
+        application_launcher=controller or RecordingApplicationLauncher(),
+        application_state_reader=RecordingApplicationStateReader(),
         clock=FixedClock(),
         log_writer=RecordingLogWriter(),
     ).compose()
@@ -48,11 +50,11 @@ def build_console(
     return console, input_reader, outputs
 
 
-@pytest.mark.parametrize("application_id", ("calculator", "notepad", "spotify"))
+@pytest.mark.parametrize("application_id", ("calculator", "notepad"))
 def test_console_formats_approved_application_success(
     application_id: str,
 ) -> None:
-    controller = RecordingApplicationController()
+    controller = RecordingApplicationLauncher()
     console, input_reader, outputs = build_console(
         (f"open {application_id}", "exit"),
         controller=controller,
@@ -78,7 +80,7 @@ def test_console_formats_approved_application_success(
     ),
 )
 def test_console_does_not_execute_unrelated_requests(content: str) -> None:
-    controller = RecordingApplicationController()
+    controller = RecordingApplicationLauncher()
     console, _, outputs = build_console(
         (content, "quit"),
         controller=controller,
@@ -97,14 +99,14 @@ def test_production_flow_reports_unmapped_spotify_without_process_start() -> Non
         commands.append(command)
         return 4321
 
-    controller = WindowsApplicationController(start_process, "win32")
+    controller = WindowsApplicationLauncher(start_process, "win32")
     console, _, outputs = build_console(
         ("open spotify", "exit"),
         controller=controller,
     )
 
     assert console.run() == 0
-    assert outputs == ["Unable to complete the request."]
+    assert outputs == ["That action is not available."]
     assert commands == []
 
 
@@ -170,7 +172,8 @@ def test_console_exits_cleanly_when_processing_is_interrupted() -> None:
 def test_entrypoint_starts_and_exits_without_launching_an_application() -> None:
     outputs: list[str] = []
     bootstrap = Bootstrap(
-        application_controller=RecordingApplicationController(),
+        application_launcher=RecordingApplicationLauncher(),
+        application_state_reader=RecordingApplicationStateReader(),
         clock=FixedClock(),
         log_writer=RecordingLogWriter(),
     )

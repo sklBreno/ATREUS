@@ -20,10 +20,12 @@ from atreus.interfaces.ai_provider import AIProvider
 from atreus.interfaces.clock import Clock
 from atreus.memory.models import MemorySnapshot, MemoryValue, WorkingMemoryPolicy
 from atreus.memory.working_memory import InMemoryWorkingMemory
+from atreus.system.models import ApplicationState
 from tests.support import (
     NOW,
     FixedClock,
-    RecordingApplicationController,
+    RecordingApplicationLauncher,
+    RecordingApplicationStateReader,
     RecordingLogWriter,
 )
 
@@ -31,8 +33,14 @@ from tests.support import (
 class BootstrapAIProvider(AIProvider):
     """Return one structured interpretation without external access."""
 
-    def __init__(self) -> None:
-        """Initialize an empty request collection."""
+    def __init__(
+        self,
+        intent_id: str = "OPEN_APPLICATION",
+        target_id: str = "calculator",
+    ) -> None:
+        """Initialize structured output and an empty request collection."""
+        self._intent_id = intent_id
+        self._target_id = target_id
         self.requests: list[AIRequest] = []
 
     def availability(self) -> AIProviderAvailability:
@@ -45,24 +53,31 @@ class BootstrapAIProvider(AIProvider):
         return AIResponse(
             request.ai_request_id,
             request.request_id,
-            '{"intent_id":"OPEN_APPLICATION","target_id":"calculator",'
-            '"confidence":0.9}',
+            f'{{"intent_id":"{self._intent_id}","target_id":"'
+            f'{self._target_id}","confidence":0.9}}',
             "test",
             "test-model",
             NOW,
         )
 
 
-def make_ai_configuration_manager(*, enabled: bool) -> ConfigurationManager:
+def make_ai_configuration_manager(
+    *,
+    enabled: bool,
+    permission_grants: str | None = None,
+) -> ConfigurationManager:
     """Create validated AI composition settings without secrets."""
+    environment = {
+        "ATREUS_AI_ENABLED": str(enabled).lower(),
+        "ATREUS_AI_MODEL": "test-model",
+        "ATREUS_AI_TIMEOUT_SECONDS": "10",
+    }
+    if permission_grants is not None:
+        environment["ATREUS_PERMISSION_GRANTS"] = permission_grants
     return ConfigurationManager(
         loader=ConfigurationLoader(
             env_file_path=None,
-            environment={
-                "ATREUS_AI_ENABLED": str(enabled).lower(),
-                "ATREUS_AI_MODEL": "test-model",
-                "ATREUS_AI_TIMEOUT_SECONDS": "10",
-            },
+            environment=environment,
         )
     )
 
@@ -81,9 +96,10 @@ def test_bootstrap_runs_configuration_foundation_flow() -> None:
 
 
 def test_bootstrap_composes_complete_production_runtime() -> None:
-    controller = RecordingApplicationController(process_id=2468)
+    controller = RecordingApplicationLauncher(process_id=2468)
     runtime = Bootstrap(
-        application_controller=controller,
+        application_launcher=controller,
+        application_state_reader=RecordingApplicationStateReader(),
         clock=FixedClock(),
         log_writer=RecordingLogWriter(),
     ).compose()
@@ -104,9 +120,10 @@ def test_bootstrap_composes_complete_production_runtime() -> None:
 
 
 def test_bootstrap_does_not_bypass_runtime_permission_enforcement() -> None:
-    controller = RecordingApplicationController()
+    controller = RecordingApplicationLauncher()
     runtime = Bootstrap(
-        application_controller=controller,
+        application_launcher=controller,
+        application_state_reader=RecordingApplicationStateReader(),
         clock=FixedClock(),
         permission_grants=(),
         log_writer=RecordingLogWriter(),
@@ -118,6 +135,34 @@ def test_bootstrap_does_not_bypass_runtime_permission_enforcement() -> None:
     assert result.decision.reason_code == "required_permission_missing"
     assert result.execution_results == ()
     assert controller.calls == []
+
+
+def test_bootstrap_uses_configured_application_read_grant_for_status() -> None:
+    provider = BootstrapAIProvider("APPLICATION_STATUS")
+    launcher = RecordingApplicationLauncher()
+    reader = RecordingApplicationStateReader(ApplicationState.RUNNING)
+    runtime = Bootstrap(
+        configuration_provider=make_ai_configuration_manager(
+            enabled=True,
+            permission_grants="application.read",
+        ),
+        application_launcher=launcher,
+        application_state_reader=reader,
+        ai_provider=provider,
+        clock=FixedClock(),
+        log_writer=RecordingLogWriter(),
+    ).compose()
+
+    status = runtime.submit("is calculator open?")
+    launch = runtime.submit("open calculator")
+
+    assert status.execution_results[0].status is (
+        CapabilityExecutionStatus.SUCCEEDED
+    )
+    assert launch.decision.reason_code == "required_permission_missing"
+    assert len(provider.requests) == 1
+    assert len(reader.calls) == 1
+    assert launcher.calls == []
 
 
 def test_bootstrap_keeps_one_memory_store_per_composition(
@@ -154,7 +199,8 @@ def test_bootstrap_keeps_one_memory_store_per_composition(
         create_store,
     )
     bootstrap = Bootstrap(
-        application_controller=RecordingApplicationController(),
+        application_launcher=RecordingApplicationLauncher(),
+        application_state_reader=RecordingApplicationStateReader(),
         clock=FixedClock(),
         log_writer=RecordingLogWriter(),
     )
@@ -189,10 +235,11 @@ def test_bootstrap_keeps_one_memory_store_per_composition(
 
 def test_bootstrap_ai_interpretation_requires_confirmation_without_execution() -> None:
     provider = BootstrapAIProvider()
-    controller = RecordingApplicationController()
+    controller = RecordingApplicationLauncher()
     runtime = Bootstrap(
         configuration_provider=make_ai_configuration_manager(enabled=True),
-        application_controller=controller,
+        application_launcher=controller,
+        application_state_reader=RecordingApplicationStateReader(),
         ai_provider=provider,
         clock=FixedClock(),
         log_writer=RecordingLogWriter(),
@@ -214,7 +261,8 @@ def test_bootstrap_deterministic_fast_path_makes_zero_ai_calls(
     provider = BootstrapAIProvider()
     runtime = Bootstrap(
         configuration_provider=make_ai_configuration_manager(enabled=True),
-        application_controller=RecordingApplicationController(),
+        application_launcher=RecordingApplicationLauncher(),
+        application_state_reader=RecordingApplicationStateReader(),
         ai_provider=provider,
         clock=FixedClock(),
         log_writer=RecordingLogWriter(),
@@ -230,10 +278,11 @@ def test_bootstrap_missing_credential_keeps_ai_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("ATREUS_OPENAI_API_KEY", raising=False)
-    controller = RecordingApplicationController()
+    controller = RecordingApplicationLauncher()
     runtime = Bootstrap(
         configuration_provider=make_ai_configuration_manager(enabled=True),
-        application_controller=controller,
+        application_launcher=controller,
+        application_state_reader=RecordingApplicationStateReader(),
         clock=FixedClock(),
         log_writer=RecordingLogWriter(),
     ).compose()
@@ -249,7 +298,8 @@ def test_bootstrap_disabled_ai_ignores_injected_provider() -> None:
     provider = BootstrapAIProvider()
     runtime = Bootstrap(
         configuration_provider=make_ai_configuration_manager(enabled=False),
-        application_controller=RecordingApplicationController(),
+        application_launcher=RecordingApplicationLauncher(),
+        application_state_reader=RecordingApplicationStateReader(),
         ai_provider=provider,
         clock=FixedClock(),
         log_writer=RecordingLogWriter(),

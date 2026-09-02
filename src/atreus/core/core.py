@@ -5,7 +5,6 @@ from uuid import UUID, uuid4
 from atreus.ai.exceptions import AIProviderException, RequestInterpretationException
 from atreus.ai.models import REQUEST_INTERPRETER_SERVICE_ID, RequestInterpretation
 from atreus.confirmation.models import (
-    ConfirmationAction,
     ConfirmationPrompt,
     ConfirmationResolutionStatus,
 )
@@ -27,6 +26,7 @@ from atreus.execution.models import (
     CapabilityExecutionStatus,
     CapabilityInvocation,
 )
+from atreus.interaction.models import InteractionLanguage
 from atreus.interfaces.capability_registry import CapabilityCatalog
 from atreus.interfaces.capability_runtime import CapabilityRuntime
 from atreus.interfaces.confirmation import ConfirmationCoordinator
@@ -41,7 +41,6 @@ from atreus.interfaces.request_interpreter import RequestInterpreter
 from atreus.planner.models import Plan, PlanningConstraints, PlanningRequest
 from atreus.shared.platform import PlatformStateSnapshot
 from atreus.shared.request import Request
-from atreus.system.models import ApplicationIdentifier
 
 
 class Core:
@@ -138,6 +137,11 @@ class Core:
                 request.request_id,
                 request.content,
             )
+            interaction_language = (
+                confirmation.pending.language
+                if confirmation.pending is not None
+                else self._interaction_language_resolver.resolve(request.content)
+            )
             candidate_capabilities = self._capability_catalog.list_available()
             orchestration_step = "request_decision"
             decision = self._decision_engine.decide(
@@ -219,6 +223,7 @@ class Core:
                     request,
                     decision,
                     interpretation,
+                    interaction_language,
                 )
 
             plan: Plan | None = None
@@ -231,25 +236,25 @@ class Core:
             elif decision.outcome is DecisionOutcome.REQUEST_PLANNING:
                 orchestration_step = "planning"
                 planning_id = uuid4()
-                confirmation_action = (
+                action = (
                     confirmation.pending.action
                     if confirmation.status is ConfirmationResolutionStatus.ACCEPTED
                     and confirmation.pending is not None
-                    else None
+                    else decision.action
                 )
                 plan = self._planner.create_plan(
                     PlanningRequest(
                         planning_id=planning_id,
                         request_id=request.request_id,
                         goal=(
-                            confirmation_action.intent_id.value
-                            if confirmation_action is not None
+                            action.intent_id.value
+                            if action is not None
                             else request.content
                         ),
                         constraints=self._planning_constraints,
                         context=context,
                         memory=memory,
-                        confirmation_action=confirmation_action,
+                        action=action,
                     )
                 )
                 if (
@@ -279,6 +284,7 @@ class Core:
             plan=plan,
             execution_results=execution_results,
             confirmation_prompt=confirmation_prompt,
+            interaction_language=interaction_language,
         )
         self._publish_completed(result)
         return result
@@ -288,31 +294,22 @@ class Core:
         request: Request,
         decision: Decision,
         interpretation: RequestInterpretation,
+        interaction_language: InteractionLanguage,
     ) -> ConfirmationPrompt:
-        if decision.target != interpretation.capability_id:
+        action = interpretation.action
+        if decision.target != action.capability_id or decision.action is not action:
             raise InconsistentDecisionError(
                 "Confirmation decision target does not match interpretation."
             )
-        try:
-            target_id = ApplicationIdentifier(interpretation.target_id)
-        except ValueError as error:
-            raise InconsistentDecisionError(
-                "Confirmation interpretation target is not approved."
-            ) from error
-        action = ConfirmationAction(
-            intent_id=interpretation.intent_id,
-            capability_id=interpretation.capability_id,
-            target_id=target_id,
-        )
         pending = self._confirmation_coordinator.begin(
             request.request_id,
             action,
-            self._interaction_language_resolver.resolve(request.content),
+            interaction_language,
         )
         return ConfirmationPrompt(
             confirmation_id=pending.confirmation_id,
             intent_id=pending.action.intent_id,
-            target_id=pending.action.target_id,
+            target_id=pending.action.application_id,
             expires_at=pending.expires_at,
             language=pending.language,
         )

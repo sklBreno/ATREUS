@@ -4,7 +4,10 @@ from collections.abc import Mapping
 
 from atreus.configuration.exceptions import ConfigurationValidationError
 
-_EXPECTED_TYPES: dict[str, type[str] | type[bool] | type[int]] = {
+_EXPECTED_TYPES: dict[
+    str,
+    type[str] | type[bool] | type[int] | type[tuple],
+] = {
     "app_name": str,
     "version": str,
     "language": str,
@@ -16,6 +19,7 @@ _EXPECTED_TYPES: dict[str, type[str] | type[bool] | type[int]] = {
     "ai_model": str,
     "ai_timeout_seconds": int,
     "confirmation_ttl_seconds": int,
+    "permission_grants": tuple,
     "start_with_windows": bool,
     "always_on": bool,
 }
@@ -41,6 +45,7 @@ class ConfigurationValidator:
         self._validate_strings(values)
         self._validate_log_level(values)
         self._validate_positive_integers(values)
+        self._validate_permission_grants(values)
         self._validate_ai_configuration(values)
 
     @staticmethod
@@ -112,3 +117,22 @@ class ConfigurationValidator:
                 raise ConfigurationValidationError(
                     "Configuration field 'ai_model' cannot be empty when AI is enabled."
                 )
+
+    @staticmethod
+    def _validate_permission_grants(values: Mapping[str, object]) -> None:
+        grants = values["permission_grants"]
+        if not isinstance(grants, tuple):
+            return
+        if any(
+            not isinstance(grant, str)
+            or not grant.strip()
+            or grant != grant.strip()
+            for grant in grants
+        ):
+            raise ConfigurationValidationError(
+                "Configuration permission grants must be normalized strings."
+            )
+        if len(grants) != len(set(grants)):
+            raise ConfigurationValidationError(
+                "Configuration permission grants must be unique."
+            )

@@ -8,15 +8,24 @@ from uuid import UUID
 from atreus.interfaces.cancellation import CancellationSignal
 
 SYSTEM_METRICS_READ_PERMISSION = "system.metrics.read"
+APPLICATION_READ_PERMISSION = "application.read"
 APPLICATION_CONTROL_PERMISSION = "application.control"
 
 
 class ApplicationIdentifier(StrEnum):
-    """Identify one application approved for controlled system launch."""
+    """Identify one application approved for controlled system operations."""
 
     CALCULATOR = "calculator"
     NOTEPAD = "notepad"
     SPOTIFY = "spotify"
+
+
+class ApplicationState(StrEnum):
+    """Describe the observed running state of an approved application."""
+
+    RUNNING = "RUNNING"
+    NOT_RUNNING = "NOT_RUNNING"
+    UNKNOWN = "UNKNOWN"
 
 
 class MetricAvailabilityStatus(StrEnum):
@@ -59,6 +68,21 @@ class ApplicationInstance:
 
     application_id: ApplicationIdentifier
     process_id: int
+
+
+@dataclass(frozen=True, slots=True)
+class ApplicationStatusRequest:
+    """Request current state for one approved application identifier."""
+
+    application_id: ApplicationIdentifier
+
+
+@dataclass(frozen=True, slots=True)
+class ApplicationStatusResult:
+    """Represent one normalized application state observation."""
+
+    application_id: ApplicationIdentifier
+    state: ApplicationState
 
 
 @dataclass(frozen=True, slots=True)

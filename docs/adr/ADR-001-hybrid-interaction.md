@@ -44,12 +44,14 @@ policy, configuration, and capability metadata for the Decision Engine. The
 Decision Engine returns an explicit outcome, and the Core applies that outcome
 through the appropriate interface.
 
-AI Provider V0 preserves this ownership. When an operational application-open
-request is not resolved by the deterministic fast path, Decision Engine may
-return `DELEGATE(ai.request_interpreter)`. Core invokes that bounded service at
-most once and submits its locally validated, non-executable interpretation to a
-second Decision Engine evaluation. A valid V0 interpretation requires user
-confirmation and never directly invokes Planner, Capability Runtime, or System
+Bounded AI request interpretation preserves this ownership. When an approved
+application request is not resolved by the deterministic fast path, Decision
+Engine may return `DELEGATE(ai.request_interpreter)`. Core invokes that bounded
+service at most once and submits its locally validated, non-executable
+interpretation to a second Decision Engine evaluation. A valid
+`OPEN_APPLICATION` interpretation requires user confirmation. A valid
+read-only `APPLICATION_STATUS` interpretation may request planning directly.
+Neither interpretation directly invokes Planner, Capability Runtime, or System
 Layer.
 
 Interactive Confirmation V0 completes that user-control path with one
@@ -122,10 +124,11 @@ AI Provider or a deterministic information capability
 
 AI is used only when it adds value and an approved provider is available.
 
-V0 does not implement free-form answers or conversation. Its only AI purpose is
-strict structured interpretation of `OPEN_APPLICATION` with an already approved
-application target. Deterministic commands such as `open calculator` and
-`open notepad` do not call AI.
+V1 does not implement free-form answers or conversation. Its only AI purpose is
+strict structured interpretation of `OPEN_APPLICATION` and
+`APPLICATION_STATUS` with an already approved application target. Local policy
+maps that output to a capability. Deterministic commands such as
+`open calculator` and `open notepad` do not call AI.
 
 ---
 
@@ -184,7 +187,8 @@ The hybrid model provides:
 - Fast deterministic execution for clear commands.
 - Explicit planning for supported high-level goals.
 - Optional AI use for requests that benefit from it.
-- Mandatory confirmation for V0 AI interpretations before any future action.
+- Mandatory confirmation before any AI-interpreted side effect.
+- Direct planning for locally validated read-only AI interpretations.
 - Single-use explicit user control with safe rejection, invalidation,
   expiration, and replay behavior.
 - Separate handling for constrained tasks and conversations.

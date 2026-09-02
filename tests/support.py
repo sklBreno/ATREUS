@@ -12,7 +12,8 @@ from atreus.capability.models import CapabilityMetadata
 from atreus.context.models import ContextSnapshot
 from atreus.execution.models import ExecutionContext
 from atreus.interfaces.ai_availability import AIAvailabilityProvider
-from atreus.interfaces.application_controller import ApplicationController
+from atreus.interfaces.application_launcher import ApplicationLauncher
+from atreus.interfaces.application_state_reader import ApplicationStateReader
 from atreus.interfaces.capability import Capability
 from atreus.interfaces.clock import Clock
 from atreus.interfaces.context import ContextProvider
@@ -23,6 +24,9 @@ from atreus.memory.models import MemorySnapshot
 from atreus.system.models import (
     ApplicationInstance,
     ApplicationLaunchRequest,
+    ApplicationState,
+    ApplicationStatusRequest,
+    ApplicationStatusResult,
     SystemOperationContext,
 )
 
@@ -81,7 +85,7 @@ class StaticAIAvailabilityProvider(AIAvailabilityProvider):
         return self._availability
 
 
-class RecordingApplicationController(ApplicationController):
+class RecordingApplicationLauncher(ApplicationLauncher):
     """Record approved application launches without native side effects."""
 
     def __init__(self, process_id: int = 4242) -> None:
@@ -97,6 +101,24 @@ class RecordingApplicationController(ApplicationController):
         """Record and return one normalized application instance."""
         self.calls.append((request, context))
         return ApplicationInstance(request.application_id, self._process_id)
+
+
+class RecordingApplicationStateReader(ApplicationStateReader):
+    """Record approved state reads without native process inspection."""
+
+    def __init__(self, state: ApplicationState = ApplicationState.NOT_RUNNING) -> None:
+        """Initialize the reader with one deterministic state."""
+        self._state = state
+        self.calls: list[tuple[ApplicationStatusRequest, SystemOperationContext]] = []
+
+    def read_status(
+        self,
+        request: ApplicationStatusRequest,
+        context: SystemOperationContext,
+    ) -> ApplicationStatusResult:
+        """Record and return one normalized application state."""
+        self.calls.append((request, context))
+        return ApplicationStatusResult(request.application_id, self._state)
 
 
 class RecordingLogWriter(LogWriter):

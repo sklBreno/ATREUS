@@ -75,19 +75,23 @@ class InconsistentAIProvider(RecordingAIProvider):
 def make_catalog(
     state: CapabilityAvailabilityState = CapabilityAvailabilityState.AVAILABLE,
 ) -> InMemoryCapabilityRegistry:
-    """Create a registry containing the approved application capability."""
+    """Create a registry containing the approved application capabilities."""
     catalog = InMemoryCapabilityRegistry()
-    catalog.register(
-        CapabilityMetadata(
-            identifier="application.open",
-            name="Open application",
-            description="Open an approved application.",
-            permissions=("application.control",),
-            availability=CapabilityAvailability(state),
-            dependencies=(),
-            requires_ai=False,
+    for identifier, permission in (
+        ("application.open", "application.control"),
+        ("application.status", "application.read"),
+    ):
+        catalog.register(
+            CapabilityMetadata(
+                identifier=identifier,
+                name=identifier,
+                description=f"Provide {identifier}.",
+                permissions=(permission,),
+                availability=CapabilityAvailability(state),
+                dependencies=(),
+                requires_ai=False,
+            )
         )
-    )
     return catalog
 
 
@@ -108,10 +112,26 @@ def test_interpreter_maps_valid_output_to_local_capability_once() -> None:
 
     assert len(provider.requests) == 1
     assert interpretation.request_id == request.request_id
-    assert interpretation.capability_id == "application.open"
-    assert interpretation.target_id == "calculator"
+    assert interpretation.action.capability_id == "application.open"
+    assert interpretation.action.application_id.value == "calculator"
     assert not hasattr(provider.requests[0], "context")
     assert not hasattr(provider.requests[0], "memory")
+
+
+def test_interpreter_maps_status_to_local_capability_without_ai_capability_id() -> None:
+    provider = RecordingAIProvider(
+        '{"intent_id":"APPLICATION_STATUS","target_id":"notepad",'
+        '"confidence":0.91}'
+    )
+    interpreter = StructuredRequestInterpreter(provider, make_catalog(), 15)
+    request = make_request()
+
+    interpretation = interpreter.interpret(request)
+
+    assert interpretation.action.intent_id.value == "APPLICATION_STATUS"
+    assert interpretation.action.capability_id == "application.status"
+    assert interpretation.action.application_id.value == "notepad"
+    assert "capability_id" not in provider.requests[0].instruction
 
 
 @pytest.mark.parametrize(
@@ -123,9 +143,12 @@ def test_interpreter_maps_valid_output_to_local_capability_once() -> None:
         '{"intent_id":"OPEN_APPLICATION","target_id":"unknown","confidence":0.9}',
         '{"intent_id":"OPEN_APPLICATION","target_id":"calculator","confidence":2}',
         '{"intent_id":"OPEN_APPLICATION","target_id":"calculator","confidence":NaN}',
+        '{"intent_id":"OPEN_APPLICATION","target_id":"calculator","confidence":true}',
         '{"intent_id":"OPEN_APPLICATION","target_id":"calculator","confidence":"high"}',
         '{"intent_id":"OPEN_APPLICATION","target_id":"calculator",'
         '"confidence":0.9,"command":"calc.exe"}',
+        '{"intent_id":"APPLICATION_STATUS","target_id":"spotify",'
+        '"confidence":0.9}',
     ),
 )
 def test_interpreter_rejects_untrusted_structured_output(content: str) -> None:

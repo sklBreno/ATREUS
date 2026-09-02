@@ -108,6 +108,8 @@ The engine returns an immutable `Decision` containing:
 - `target`: Optional stable capability or service identifier required by the
   selected outcome.
 - `reason_code`: Stable machine-readable explanation of the governing rule.
+- `action`: Optional locally validated provider-neutral `ApplicationAction`
+  preserved for confirmation or planning.
 
 `EXECUTE` and `DELEGATE` require a target. `ASK_FOR_CONFIRMATION`, `SUGGEST`,
 `IGNORE`, and `REQUEST_PLANNING` may omit a target when the Core can continue
@@ -120,8 +122,9 @@ AI Provider V0 preserves two explicit evaluations. The first may return
 resolve the request, the input is eligible for the bounded fallback, and no
 suspicious or multi-action pattern is present. A validated interpretation is
 provided explicitly in the second `DecisionInput`. The second evaluation never
-delegates again and returns `ASK_FOR_CONFIRMATION` for a valid available and
-permitted target. It never returns `EXECUTE` or `REQUEST_PLANNING` from the
+delegates again. A valid available and permitted `OPEN_APPLICATION` action
+returns `ASK_FOR_CONFIRMATION`; a valid read-only `APPLICATION_STATUS` action
+returns `REQUEST_PLANNING` directly. Neither path returns `EXECUTE` from the
 interpretation.
 
 Interactive Confirmation V0 adds a separate later evaluation. `ACCEPTED`
@@ -205,11 +208,15 @@ Version 1 evaluates policy in deterministic precedence:
 7. Determine whether the request requires planning.
 8. Select the outcome and reason code.
 
-For the V0 interpreter path, deterministic exact commands retain precedence.
-Eligibility requires one approved application target, one bounded application
-action, and no shell operators, command-injection markers, or additional
-actions. After interpretation, Capability Catalog availability, user blocks,
-permissions, and operational state remain authoritative before confirmation.
+For the bounded interpreter path, deterministic exact commands retain
+precedence. Eligibility requires one approved application target, one bounded
+application action, and no path, executable, PID, arbitrary process, shell,
+command-injection, allowlist-bypass, or additional-action pattern. A generic
+question-delegation rule cannot bypass this eligibility when the configured
+service is `ai.request_interpreter`. After interpretation, the local action
+matrix, Capability Catalog availability, user blocks, permissions, and
+operational state remain authoritative. Open requires confirmation; status is
+read-only and does not.
 
 An earlier restrictive rule takes precedence over a later permissive rule.
 Conflicting rules must not be resolved by arbitrary registration order.

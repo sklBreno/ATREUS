@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID
 
-from atreus.ai.models import AIIntent
-from atreus.capability.contracts import OPEN_APPLICATION_CAPABILITY_ID
+from atreus.application.contracts import is_supported_application_action
+from atreus.application.models import ApplicationAction, ApplicationIntent
 from atreus.confirmation.exceptions import InvalidConfirmationError
 from atreus.interaction.models import InteractionLanguage
 from atreus.system.models import ApplicationIdentifier
@@ -24,36 +24,12 @@ class ConfirmationResolutionStatus(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class ConfirmationAction:
-    """Preserve one exact locally approved action awaiting authorization."""
-
-    intent_id: AIIntent
-    capability_id: str
-    target_id: ApplicationIdentifier
-
-    def __post_init__(self) -> None:
-        """Validate the only action supported by Interactive Confirmation V0."""
-        if self.intent_id is not AIIntent.OPEN_APPLICATION:
-            raise InvalidConfirmationError(
-                "Confirmation intent must be OPEN_APPLICATION."
-            )
-        if self.capability_id != OPEN_APPLICATION_CAPABILITY_ID:
-            raise InvalidConfirmationError(
-                "Confirmation capability must be application.open."
-            )
-        if not isinstance(self.target_id, ApplicationIdentifier):
-            raise InvalidConfirmationError(
-                "Confirmation target must be an approved application identifier."
-            )
-
-
-@dataclass(frozen=True, slots=True)
 class PendingConfirmation:
     """Represent one process-local action awaiting a single response."""
 
     confirmation_id: UUID
     original_request_id: UUID
-    action: ConfirmationAction
+    action: ApplicationAction
     language: InteractionLanguage
     created_at: datetime
     expires_at: datetime
@@ -67,7 +43,11 @@ class PendingConfirmation:
             raise InvalidConfirmationError(
                 "Pending confirmation identifiers must be UUIDs."
             )
-        if not isinstance(self.action, ConfirmationAction):
+        if (
+            not isinstance(self.action, ApplicationAction)
+            or self.action.intent_id is not ApplicationIntent.OPEN_APPLICATION
+            or not is_supported_application_action(self.action)
+        ):
             raise InvalidConfirmationError(
                 "Pending confirmation action is invalid."
             )
@@ -126,7 +106,7 @@ class ConfirmationPrompt:
     """Provide structured safe data for interface-owned prompt rendering."""
 
     confirmation_id: UUID
-    intent_id: AIIntent
+    intent_id: ApplicationIntent
     target_id: ApplicationIdentifier
     expires_at: datetime
     language: InteractionLanguage
@@ -137,7 +117,7 @@ class ConfirmationPrompt:
             raise InvalidConfirmationError(
                 "Confirmation prompt identifier must be a UUID."
             )
-        if self.intent_id is not AIIntent.OPEN_APPLICATION:
+        if self.intent_id is not ApplicationIntent.OPEN_APPLICATION:
             raise InvalidConfirmationError(
                 "Confirmation prompt intent must be OPEN_APPLICATION."
             )

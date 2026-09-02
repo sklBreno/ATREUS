@@ -25,7 +25,8 @@ from atreus.runtime.models import (
 )
 from tests.support import (
     FixedClock,
-    RecordingApplicationController,
+    RecordingApplicationLauncher,
+    RecordingApplicationStateReader,
     RecordingLogWriter,
 )
 
@@ -238,10 +239,11 @@ def test_runtime_host_nonzero_foreground_status_is_fatal() -> None:
 
 def test_composed_host_executes_pipeline_only_while_running() -> None:
     inputs = iter(("open calculator", "exit"))
-    controller = RecordingApplicationController()
+    controller = RecordingApplicationLauncher()
     writer = RecordingLogWriter()
     host = Bootstrap(
-        application_controller=controller,
+        application_launcher=controller,
+        application_state_reader=RecordingApplicationStateReader(),
         clock=FixedClock(),
         log_writer=writer,
     ).compose_host(lambda prompt: next(inputs), lambda output: None)
@@ -267,7 +269,8 @@ def test_runtime_host_failure_observability_is_sanitized() -> None:
         raise RuntimeError("private terminal and environment detail")
 
     host = Bootstrap(
-        application_controller=RecordingApplicationController(),
+        application_launcher=RecordingApplicationLauncher(),
+        application_state_reader=RecordingApplicationStateReader(),
         clock=FixedClock(),
         log_writer=writer,
     ).compose_host(fail_input, lambda output: None)

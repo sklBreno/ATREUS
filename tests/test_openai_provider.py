@@ -30,7 +30,9 @@ from atreus.ai.models import (
     AIRequestStarted,
 )
 from atreus.ai.openai_provider import OpenAIProvider
+from atreus.application.models import ApplicationIntent
 from atreus.events.event_bus import InProcessEventBus
+from atreus.system.models import ApplicationIdentifier
 from tests.support import FixedClock
 
 
@@ -116,6 +118,22 @@ def test_openai_adapter_uses_strict_schema_without_tools() -> None:
     assert output_format["strict"] is True
     schema = cast(dict[str, object], output_format["schema"])
     assert schema["additionalProperties"] is False
+    properties = cast(dict[str, object], schema["properties"])
+    assert set(properties) == {"intent_id", "target_id", "confidence"}
+    intent_schema = cast(dict[str, object], properties["intent_id"])
+    target_schema = cast(dict[str, object], properties["target_id"])
+    assert intent_schema["enum"] == [
+        intent.value for intent in ApplicationIntent
+    ]
+    assert target_schema["enum"] == [
+        application_id.value for application_id in ApplicationIdentifier
+    ]
+    assert "capability_id" not in properties
+    assert "executable" not in properties
+    assert "process" not in properties
+    assert "pid" not in properties
+    assert "path" not in properties
+    assert "command" not in properties
 
 
 def test_openai_adapter_publishes_sanitized_lifecycle_events() -> None:

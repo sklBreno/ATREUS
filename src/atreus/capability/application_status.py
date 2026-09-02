@@ -1,4 +1,4 @@
-"""Controlled application-opening capability."""
+"""Controlled read-only application-status capability."""
 
 from uuid import uuid4
 
@@ -6,7 +6,7 @@ from atreus.application.contracts import supported_application_action
 from atreus.application.models import ApplicationIntent
 from atreus.capability.contracts import (
     APPLICATION_ID_ARGUMENT,
-    OPEN_APPLICATION_CAPABILITY_ID,
+    APPLICATION_STATUS_CAPABILITY_ID,
     CapabilityArguments,
     CapabilityOutput,
     CapabilityOutputItem,
@@ -17,31 +17,29 @@ from atreus.capability.models import (
     CapabilityMetadata,
 )
 from atreus.execution.models import ExecutionContext
-from atreus.interfaces.application_launcher import ApplicationLauncher
+from atreus.interfaces.application_state_reader import ApplicationStateReader
 from atreus.interfaces.capability import Capability
 from atreus.system.models import (
-    APPLICATION_CONTROL_PERMISSION,
+    APPLICATION_READ_PERMISSION,
     ApplicationIdentifier,
-    ApplicationLaunchRequest,
+    ApplicationState,
+    ApplicationStatusRequest,
+    ApplicationStatusResult,
     SystemOperationContext,
 )
 
 
-class OpenApplicationCapability(Capability):
-    """Open one explicitly allowlisted application through the System Layer."""
+class ApplicationStatusCapability(Capability):
+    """Read state for one approved application through the System Layer."""
 
-    def __init__(self, application_launcher: ApplicationLauncher) -> None:
-        """Initialize the capability with the application-control boundary.
-
-        Args:
-            application_launcher: Controlled System Layer application launcher.
-        """
-        self._application_launcher = application_launcher
+    def __init__(self, application_state_reader: ApplicationStateReader) -> None:
+        """Initialize the capability with the read-only application boundary."""
+        self._application_state_reader = application_state_reader
         self._metadata = CapabilityMetadata(
-            identifier=OPEN_APPLICATION_CAPABILITY_ID,
-            name="Open Application",
-            description="Open one explicitly approved desktop application.",
-            permissions=(APPLICATION_CONTROL_PERMISSION,),
+            identifier=APPLICATION_STATUS_CAPABILITY_ID,
+            name="Application Status",
+            description="Read state for one explicitly approved application.",
+            permissions=(APPLICATION_READ_PERMISSION,),
             availability=CapabilityAvailability(
                 CapabilityAvailabilityState.AVAILABLE
             ),
@@ -51,7 +49,7 @@ class OpenApplicationCapability(Capability):
 
     @property
     def metadata(self) -> CapabilityMetadata:
-        """Return immutable application-opening metadata."""
+        """Return immutable application-status metadata."""
         return self._metadata
 
     def execute(
@@ -59,29 +57,18 @@ class OpenApplicationCapability(Capability):
         arguments: CapabilityArguments,
         context: ExecutionContext,
     ) -> CapabilityOutput:
-        """Open one approved application from a validated identifier.
-
-        Args:
-            arguments: Exactly one ``application_id`` string argument.
-            context: Correlation, grants, context, and cancellation metadata.
-
-        Returns:
-            Immutable normalized launch result values.
-
-        Raises:
-            ValueError: If arguments do not identify an approved application.
-        """
+        """Read one approved application's normalized state."""
         application_id = self._application_id(arguments)
         if (
             supported_application_action(
-                ApplicationIntent.OPEN_APPLICATION,
+                ApplicationIntent.APPLICATION_STATUS,
                 application_id,
             )
             is None
         ):
-            raise ValueError("Application opening is not supported.")
-        instance = self._application_launcher.launch(
-            ApplicationLaunchRequest(application_id),
+            raise ValueError("Application status is not supported.")
+        status = self._application_state_reader.read_status(
+            ApplicationStatusRequest(application_id),
             SystemOperationContext(
                 operation_id=uuid4(),
                 request_id=context.request_id,
@@ -90,10 +77,15 @@ class OpenApplicationCapability(Capability):
                 cancellation=context.cancellation,
             ),
         )
+        if (
+            not isinstance(status, ApplicationStatusResult)
+            or status.application_id is not application_id
+            or not isinstance(status.state, ApplicationState)
+        ):
+            raise ValueError("Application status result is inconsistent.")
         return (
-            CapabilityOutputItem("application_id", instance.application_id.value),
-            CapabilityOutputItem("process_id", instance.process_id),
-            CapabilityOutputItem("status", "launched"),
+            CapabilityOutputItem("application_id", status.application_id.value),
+            CapabilityOutputItem("state", status.state.value),
         )
 
     @staticmethod
@@ -102,7 +94,7 @@ class OpenApplicationCapability(Capability):
     ) -> ApplicationIdentifier:
         if len(arguments) != 1 or arguments[0].name != APPLICATION_ID_ARGUMENT:
             raise ValueError(
-                "Open application requires one application_id argument."
+                "Application status requires one application_id argument."
             )
         value = arguments[0].value
         if not isinstance(value, str):

@@ -22,8 +22,8 @@ from atreus.system.models import (
     SystemOperationContext,
 )
 from atreus.system.system_information import UnavailableSystemInformationProvider
-from atreus.system.windows_application_controller import (
-    WindowsApplicationController,
+from atreus.system.windows_application_launcher import (
+    WindowsApplicationLauncher,
 )
 from tests.support import NOW, FixedClock
 
@@ -96,7 +96,7 @@ def test_windows_controller_launches_only_allowlisted_application_command(
         commands.append(command)
         return 4321
 
-    controller = WindowsApplicationController(start_process, "win32")
+    controller = WindowsApplicationLauncher(start_process, "win32")
     context = make_context(grants=(APPLICATION_CONTROL_PERMISSION,))
 
     instance = controller.launch(
@@ -116,7 +116,7 @@ def test_windows_controller_normalizes_approved_identifier_without_mapping() -> 
         commands.append(command)
         return 4321
 
-    controller = WindowsApplicationController(start_process, "win32")
+    controller = WindowsApplicationLauncher(start_process, "win32")
 
     with pytest.raises(UnsupportedSystemOperationError) as captured:
         controller.launch(
@@ -132,7 +132,7 @@ def test_windows_controller_translates_native_launch_failure() -> None:
     def fail_to_start(command: tuple[str, ...]) -> int:
         raise OSError(f"private native failure for {command!r}")
 
-    controller = WindowsApplicationController(fail_to_start, "win32")
+    controller = WindowsApplicationLauncher(fail_to_start, "win32")
 
     with pytest.raises(SystemNativeAdapterError) as captured:
         controller.launch(
@@ -144,7 +144,7 @@ def test_windows_controller_translates_native_launch_failure() -> None:
 
 
 def test_windows_controller_enforces_permission_and_cancellation() -> None:
-    controller = WindowsApplicationController(lambda command: 1234, "win32")
+    controller = WindowsApplicationLauncher(lambda command: 1234, "win32")
     request = ApplicationLaunchRequest(ApplicationIdentifier.CALCULATOR)
 
     with pytest.raises(SystemPermissionDeniedError):
@@ -160,7 +160,7 @@ def test_windows_controller_enforces_permission_and_cancellation() -> None:
 
 
 def test_windows_controller_rejects_invalid_and_unsupported_requests() -> None:
-    controller = WindowsApplicationController(lambda command: 1234, "win32")
+    controller = WindowsApplicationLauncher(lambda command: 1234, "win32")
     invalid_request = ApplicationLaunchRequest("terminal")  # type: ignore[arg-type]
 
     with pytest.raises(InvalidSystemOperationError):
@@ -169,7 +169,7 @@ def test_windows_controller_rejects_invalid_and_unsupported_requests() -> None:
             make_context(grants=(APPLICATION_CONTROL_PERMISSION,)),
         )
     with pytest.raises(UnsupportedSystemOperationError):
-        WindowsApplicationController(
+        WindowsApplicationLauncher(
             lambda command: 1234,
             "linux",
         ).launch(
@@ -178,8 +178,8 @@ def test_windows_controller_rejects_invalid_and_unsupported_requests() -> None:
         )
 
 
-def test_application_controller_exposes_no_arbitrary_execution_api() -> None:
-    controller = WindowsApplicationController(lambda command: 1234, "win32")
+def test_application_launcher_exposes_no_arbitrary_execution_api() -> None:
+    controller = WindowsApplicationLauncher(lambda command: 1234, "win32")
 
     assert not hasattr(controller, "run")
     assert not hasattr(controller, "execute_command")

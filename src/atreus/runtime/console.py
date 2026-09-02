@@ -7,7 +7,7 @@ from atreus.decision.models import DecisionOutcome
 from atreus.execution.models import CapabilityExecutionStatus
 from atreus.interaction.models import InteractionLanguage
 from atreus.interfaces.foreground_interface import ForegroundInterface
-from atreus.system.models import ApplicationIdentifier
+from atreus.system.models import ApplicationIdentifier, ApplicationState
 
 type RequestHandler = Callable[[str], CoreRequestResult]
 type InputReader = Callable[[str], str]
@@ -24,6 +24,41 @@ _APPLICATION_DISPLAY_NAMES = {
         ApplicationIdentifier.CALCULATOR: "Calculator",
         ApplicationIdentifier.NOTEPAD: "Notepad",
         ApplicationIdentifier.SPOTIFY: "Spotify",
+    },
+}
+_PT_BR_CONFIRMATION_TARGETS = {
+    ApplicationIdentifier.CALCULATOR: "a Calculadora",
+    ApplicationIdentifier.NOTEPAD: "o Bloco de Notas",
+    ApplicationIdentifier.SPOTIFY: "o Spotify",
+}
+_APPLICATION_STATUS_MESSAGES = {
+    InteractionLanguage.PT_BR: {
+        ApplicationIdentifier.CALCULATOR: {
+            ApplicationState.RUNNING: "A Calculadora está aberta.",
+            ApplicationState.NOT_RUNNING: "A Calculadora não está aberta.",
+            ApplicationState.UNKNOWN: (
+                "Não foi possível determinar o estado da Calculadora."
+            ),
+        },
+        ApplicationIdentifier.NOTEPAD: {
+            ApplicationState.RUNNING: "O Bloco de Notas está aberto.",
+            ApplicationState.NOT_RUNNING: "O Bloco de Notas não está aberto.",
+            ApplicationState.UNKNOWN: (
+                "Não foi possível determinar o estado do Bloco de Notas."
+            ),
+        },
+    },
+    InteractionLanguage.EN_US: {
+        ApplicationIdentifier.CALCULATOR: {
+            ApplicationState.RUNNING: "Calculator is open.",
+            ApplicationState.NOT_RUNNING: "Calculator is not open.",
+            ApplicationState.UNKNOWN: "Could not determine Calculator status.",
+        },
+        ApplicationIdentifier.NOTEPAD: {
+            ApplicationState.RUNNING: "Notepad is open.",
+            ApplicationState.NOT_RUNNING: "Notepad is not open.",
+            ApplicationState.UNKNOWN: "Could not determine Notepad status.",
+        },
     },
 }
 
@@ -85,7 +120,8 @@ class InteractiveConsole(ForegroundInterface):
             ]
             if prompt.language is InteractionLanguage.EN_US:
                 return f"Do you want me to open {application_name}? [yes/no]"
-            return f"Você quer que eu abra a {application_name}? [sim/não]"
+            target = _PT_BR_CONFIRMATION_TARGETS[prompt.target_id]
+            return f"Você quer que eu abra {target}? [sim/não]"
         successful_outputs = tuple(
             item
             for execution in result.execution_results
@@ -95,6 +131,18 @@ class InteractiveConsole(ForegroundInterface):
         )
         output_values = {item.name: item.value for item in successful_outputs}
         application_id = output_values.get("application_id")
+        application_state = output_values.get("state")
+        if isinstance(application_id, str) and isinstance(application_state, str):
+            try:
+                approved_application = ApplicationIdentifier(application_id)
+                approved_state = ApplicationState(application_state)
+                messages = _APPLICATION_STATUS_MESSAGES[
+                    result.interaction_language
+                ][approved_application]
+            except (KeyError, ValueError):
+                pass
+            else:
+                return messages[approved_state]
         if (
             output_values.get("status") == "launched"
             and isinstance(application_id, str)
