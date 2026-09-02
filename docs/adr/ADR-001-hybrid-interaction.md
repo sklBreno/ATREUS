@@ -124,11 +124,17 @@ AI Provider or a deterministic information capability
 
 AI is used only when it adds value and an approved provider is available.
 
-V1 does not implement free-form answers or conversation. Its only AI purpose is
-strict structured interpretation of `OPEN_APPLICATION` and
-`APPLICATION_STATUS` with an already approved application target. Local policy
-maps that output to a capability. Deterministic commands such as
-`open calculator` and `open notepad` do not call AI.
+Conversational AI V0 delegates eligible questions to a stateless
+`ConversationResponder`. Stable self-knowledge is answered deterministically;
+other eligible questions may use one bounded plain-text AI request. The result
+is user-facing text only and never enters Planner, Capability Runtime, or System
+Layer.
+
+Strict structured interpretation remains a separate AI purpose for
+`OPEN_APPLICATION` and `APPLICATION_STATUS` with an already approved
+application target. Local policy maps that output to a capability.
+Deterministic commands such as `open calculator` and `open notepad` do not call
+AI.
 
 ---
 
@@ -160,13 +166,18 @@ Request Classifier: CONVERSATION
     ↓
 Core
     ↓
-Decision Engine
+Decision Engine: DELEGATE(ai.conversation_responder)
     ↓
-Deterministic response capability, AI Provider, or no action
+Conversation Responder
+    ↓
+Deterministic self-knowledge or one bounded AI Provider request
+    ↓
+User-facing text only
 ```
 
-`CONVERSATION` does not require a dedicated conversation module in Version 1.
-AI Provider V0 does not implement this conversational route.
+Conversation is stateless in V0. It receives no Context or Working Memory,
+retains no history, has no tools, and cannot execute actions. Operational
+commands and confirmation responses retain precedence.
 
 ---
 
@@ -245,6 +256,7 @@ different semantics and orchestration needs.
 - Capability Registry.
 - Capability Runtime.
 - AI Provider.
+- Conversation Responder.
 - Event Bus.
 
 ---

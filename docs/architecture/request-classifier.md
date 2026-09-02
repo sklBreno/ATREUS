@@ -136,10 +136,15 @@ Version 1 should prefer deterministic rules for clear commands, questions, and
 task patterns. Classification strategies may be composed, but their precedence
 must be deterministic and covered by tests.
 
-AI Provider integration does not change classification. The classifier remains entirely
-local and deterministic. After classification, Decision Engine may ask Core to
-invoke a separate bounded `RequestInterpreter`; that service does not alter the
-`ClassifiedRequest`.
+AI Provider integration does not change classification. The classifier remains
+entirely local and deterministic. After classification, Decision Engine may ask
+Core to invoke a bounded `RequestInterpreter` or stateless
+`ConversationResponder`; neither service alters the `ClassifiedRequest`.
+
+Conversational AI V0 adds narrow deterministic recognition for common
+Portuguese and English questions, greetings, identity requests, capability
+questions, and internal-secret requests. These rules identify request type
+only. They do not generate responses, select a provider, or route execution.
 
 Natural Language Actions V1 does not add intent or capability selection to the
 classifier. Phrases about opening an approved application or reading its status

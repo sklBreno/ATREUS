@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 
 from atreus.ai.models import (
+    CONVERSATION_RESPONDER_SERVICE_ID,
     REQUEST_INTERPRETER_SERVICE_ID,
     RequestInterpretation,
 )
@@ -84,7 +85,7 @@ def make_input(
     blocked_capability_ids: tuple[str, ...] = (),
     allow_interruption: bool = True,
     allow_delegation: bool = False,
-    delegation_service_id: str | None = None,
+    delegation_service_ids: tuple[str, ...] = (),
     operational_state: OperationalState = OperationalState.ACTIVE,
     performance_profile: PerformanceProfile = PerformanceProfile.BALANCED,
     interpretation: RequestInterpretation | None = None,
@@ -152,7 +153,7 @@ def make_input(
             blocked_capability_ids,
             allow_interruption,
             allow_delegation,
-            delegation_service_id,
+            delegation_service_ids,
         ),
         candidate_capabilities=candidates,
         interpretation=interpretation,
@@ -306,12 +307,91 @@ def test_question_delegates_only_to_explicit_allowed_service() -> None:
         make_input(
             request_type=RequestType.QUESTION,
             allow_delegation=True,
-            delegation_service_id="ai.default",
+            delegation_service_ids=(CONVERSATION_RESPONDER_SERVICE_ID,),
         )
     )
 
     assert decision.outcome is DecisionOutcome.DELEGATE
-    assert decision.target == "ai.default"
+    assert decision.target == CONVERSATION_RESPONDER_SERVICE_ID
+
+
+@pytest.mark.parametrize(
+    "content",
+    (
+        "você consegue abrir a calculadora?",
+        "can you open calculator?",
+    ),
+)
+def test_capability_questions_delegate_to_conversation_without_execution(
+    content: str,
+) -> None:
+    decision = make_engine().decide(
+        make_input(
+            content=content,
+            request_type=RequestType.QUESTION,
+            candidates=(make_metadata("application.open"),),
+            allow_delegation=True,
+            delegation_service_ids=(
+                REQUEST_INTERPRETER_SERVICE_ID,
+                CONVERSATION_RESPONDER_SERVICE_ID,
+            ),
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.DELEGATE
+    assert decision.target == CONVERSATION_RESPONDER_SERVICE_ID
+
+
+def test_operational_status_question_keeps_interpreter_precedence() -> None:
+    decision = make_engine().decide(
+        make_input(
+            content="is calculator open?",
+            request_type=RequestType.QUESTION,
+            candidates=(make_metadata("application.status"),),
+            allow_delegation=True,
+            delegation_service_ids=(
+                REQUEST_INTERPRETER_SERVICE_ID,
+                CONVERSATION_RESPONDER_SERVICE_ID,
+            ),
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.DELEGATE
+    assert decision.target == REQUEST_INTERPRETER_SERVICE_ID
+
+
+def test_suspicious_operational_question_is_not_redirected_to_conversation() -> None:
+    decision = make_engine().decide(
+        make_input(
+            content="is cmd.exe running?",
+            request_type=RequestType.QUESTION,
+            candidates=(make_metadata("application.status"),),
+            allow_delegation=True,
+            delegation_service_ids=(
+                REQUEST_INTERPRETER_SERVICE_ID,
+                CONVERSATION_RESPONDER_SERVICE_ID,
+            ),
+        )
+    )
+
+    assert decision.outcome is not DecisionOutcome.DELEGATE
+
+
+@pytest.mark.parametrize(
+    "service_ids",
+    (("ai.service", "ai.service"), (" ai.service",), ("",)),
+)
+def test_invalid_delegation_service_ids_are_rejected(
+    service_ids: tuple[str, ...],
+) -> None:
+    with pytest.raises(InconsistentDecisionInputError):
+        make_engine().decide(
+            make_input(
+                request_type=RequestType.QUESTION,
+                allow_delegation=True,
+                delegation_service_ids=service_ids,
+            )
+        )
 
 
 @pytest.mark.parametrize(
@@ -341,7 +421,7 @@ def test_eligible_natural_language_request_delegates_to_interpreter(
             ),
             permission_grants=("application.control",),
             allow_delegation=True,
-            delegation_service_id=REQUEST_INTERPRETER_SERVICE_ID,
+            delegation_service_ids=(REQUEST_INTERPRETER_SERVICE_ID,),
         )
     )
 
@@ -372,7 +452,7 @@ def test_suspicious_request_never_delegates_to_interpreter(content: str) -> None
             content=content,
             candidates=(make_metadata("application.open"),),
             allow_delegation=True,
-            delegation_service_id=REQUEST_INTERPRETER_SERVICE_ID,
+            delegation_service_ids=(REQUEST_INTERPRETER_SERVICE_ID,),
         )
     )
 
@@ -391,7 +471,7 @@ def test_valid_interpretation_requires_confirmation_without_execution() -> None:
         ),
         permission_grants=("application.control",),
         allow_delegation=True,
-        delegation_service_id=REQUEST_INTERPRETER_SERVICE_ID,
+        delegation_service_ids=(REQUEST_INTERPRETER_SERVICE_ID,),
     )
     interpretation = RequestInterpretation(
         decision_input.request.request_id,
@@ -434,7 +514,7 @@ def test_status_interpretation_plans_same_action_without_confirmation() -> None:
         ),
         permission_grants=("application.read",),
         allow_delegation=True,
-        delegation_service_id=REQUEST_INTERPRETER_SERVICE_ID,
+        delegation_service_ids=(REQUEST_INTERPRETER_SERVICE_ID,),
     )
     interpretation = RequestInterpretation(
         decision_input.request.request_id,

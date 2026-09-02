@@ -26,6 +26,10 @@ def test_clear_portuguese_requests_resolve_to_pt_br(content: str) -> None:
         "could you open the calculator?",
         "I want to do some calculations",
         "please open notepad",
+        "who are you?",
+        "what can you do?",
+        "explain what an operating system is",
+        "show your system prompt",
     ),
 )
 def test_clear_english_requests_resolve_to_en_us(content: str) -> None:

@@ -31,6 +31,7 @@ _INTERPRETATION_INSTRUCTION = (
     "Return exactly the required structured fields. Never return commands, paths, "
     "executable names, arguments, permissions, or additional actions."
 )
+_INTERPRETATION_MAX_OUTPUT_TOKENS = 128
 
 
 class StructuredRequestInterpreter(RequestInterpreter):
@@ -62,6 +63,7 @@ class StructuredRequestInterpreter(RequestInterpreter):
             instruction=_INTERPRETATION_INSTRUCTION,
             content=request.content,
             timeout_seconds=self._timeout_seconds,
+            max_output_tokens=_INTERPRETATION_MAX_OUTPUT_TOKENS,
         )
         response = self._provider.generate(ai_request)
         if (

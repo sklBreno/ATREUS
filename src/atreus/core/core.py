@@ -2,8 +2,17 @@
 
 from uuid import UUID, uuid4
 
-from atreus.ai.exceptions import AIProviderException, RequestInterpretationException
-from atreus.ai.models import REQUEST_INTERPRETER_SERVICE_ID, RequestInterpretation
+from atreus.ai.exceptions import (
+    AIProviderException,
+    ConversationResponseException,
+    InvalidConversationResponseError,
+    RequestInterpretationException,
+)
+from atreus.ai.models import (
+    CONVERSATION_RESPONDER_SERVICE_ID,
+    REQUEST_INTERPRETER_SERVICE_ID,
+    RequestInterpretation,
+)
 from atreus.confirmation.models import (
     ConfirmationPrompt,
     ConfirmationResolutionStatus,
@@ -26,11 +35,13 @@ from atreus.execution.models import (
     CapabilityExecutionStatus,
     CapabilityInvocation,
 )
-from atreus.interaction.models import InteractionLanguage
+from atreus.interaction.exceptions import InvalidConversationalResponseError
+from atreus.interaction.models import ConversationalResponse, InteractionLanguage
 from atreus.interfaces.capability_registry import CapabilityCatalog
 from atreus.interfaces.capability_runtime import CapabilityRuntime
 from atreus.interfaces.confirmation import ConfirmationCoordinator
 from atreus.interfaces.context import ContextProvider
+from atreus.interfaces.conversation_responder import ConversationResponder
 from atreus.interfaces.decision_engine import DecisionEngine
 from atreus.interfaces.event_bus import EventBus
 from atreus.interfaces.interaction_language import InteractionLanguageResolver
@@ -63,6 +74,7 @@ class Core:
         confirmation_coordinator: ConfirmationCoordinator,
         interaction_language_resolver: InteractionLanguageResolver,
         request_interpreter: RequestInterpreter | None = None,
+        conversation_responder: ConversationResponder | None = None,
     ) -> None:
         """Initialize Core with explicit runtime contracts.
 
@@ -82,6 +94,7 @@ class Core:
             confirmation_coordinator: Single-use interactive authorization state.
             interaction_language_resolver: Deterministic prompt language boundary.
             request_interpreter: Optional bounded AI interpretation boundary.
+            conversation_responder: Optional stateless text response boundary.
         """
         self._event_bus = event_bus
         self._request_classifier = request_classifier
@@ -98,6 +111,7 @@ class Core:
         self._confirmation_coordinator = confirmation_coordinator
         self._interaction_language_resolver = interaction_language_resolver
         self._request_interpreter = request_interpreter
+        self._conversation_responder = conversation_responder
 
     def handle_request(self, request: Request) -> CoreRequestResult:
         """Coordinate one request through decision, planning, and execution.
@@ -205,6 +219,37 @@ class Core:
                             "Decision request identity does not match Core input."
                         )
 
+            conversational_response: ConversationalResponse | None = None
+            if (
+                decision.outcome is DecisionOutcome.DELEGATE
+                and decision.target == CONVERSATION_RESPONDER_SERVICE_ID
+                and self._conversation_responder is not None
+            ):
+                orchestration_step = "conversational_response"
+                try:
+                    conversational_response = self._conversation_responder.respond(
+                        request,
+                        interaction_language,
+                    )
+                    if (
+                        conversational_response.request_id != request.request_id
+                        or conversational_response.language is not interaction_language
+                    ):
+                        raise InvalidConversationResponseError(
+                            "Conversational response correlation is inconsistent."
+                        )
+                except (
+                    AIProviderException,
+                    ConversationResponseException,
+                    InvalidConversationalResponseError,
+                ) as error:
+                    conversational_response = None
+                    self._publish_error(
+                        request.request_id,
+                        orchestration_step,
+                        type(error).__name__,
+                    )
+
             if (
                 confirmation.status is ConfirmationResolutionStatus.ACCEPTED
                 and decision.outcome is DecisionOutcome.EXECUTE
@@ -284,6 +329,7 @@ class Core:
             plan=plan,
             execution_results=execution_results,
             confirmation_prompt=confirmation_prompt,
+            conversational_response=conversational_response,
             interaction_language=interaction_language,
         )
         self._publish_completed(result)

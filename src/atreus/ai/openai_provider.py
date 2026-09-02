@@ -1,4 +1,4 @@
-"""OpenAI adapter for bounded structured request interpretation."""
+"""OpenAI adapter for bounded provider-neutral generation purposes."""
 
 from datetime import datetime
 
@@ -86,31 +86,18 @@ class OpenAIProvider(AIProvider):
         return AIProviderAvailability(AIProviderAvailabilityState.AVAILABLE)
 
     def generate(self, request: AIRequest) -> AIResponse:
-        """Generate one strict structured response without exposing SDK data."""
-        if request.purpose is not AIRequestPurpose.REQUEST_INTERPRETATION:
-            raise AIInternalProviderError("AI request purpose is unsupported.")
+        """Generate one purpose-specific response without exposing SDK data."""
         started_at = self._clock.now()
         self._publish_started(request, started_at)
         try:
+            creation_arguments = self._creation_arguments(request)
             sdk_response = self._client.with_options(
                 timeout=request.timeout_seconds
-            ).responses.create(
-                model=self._model_id,
-                instructions=request.instruction,
-                input=request.content,
-                text={
-                    "format": {
-                        "type": "json_schema",
-                        "name": "atreus_request_interpretation",
-                        "strict": True,
-                        "schema": _REQUEST_INTERPRETATION_SCHEMA,
-                    }
-                },
-            )
+            ).responses.create(**creation_arguments)
             content = sdk_response.output_text
             if not isinstance(content, str) or not content.strip():
                 raise AIMalformedProviderResponseError(
-                    "AI Provider returned no structured content."
+                    "AI Provider returned no content."
                 )
             completed_at = self._clock.now()
             response = AIResponse(
@@ -129,6 +116,27 @@ class OpenAIProvider(AIProvider):
             raise normalized from None
         self._publish_completed(request, response, started_at)
         return response
+
+    def _creation_arguments(self, request: AIRequest) -> dict[str, object]:
+        arguments: dict[str, object] = {
+            "model": self._model_id,
+            "instructions": request.instruction,
+            "input": request.content,
+            "max_output_tokens": request.max_output_tokens,
+        }
+        if request.purpose is AIRequestPurpose.REQUEST_INTERPRETATION:
+            arguments["text"] = {
+                "format": {
+                    "type": "json_schema",
+                    "name": "atreus_request_interpretation",
+                    "strict": True,
+                    "schema": _REQUEST_INTERPRETATION_SCHEMA,
+                }
+            }
+            return arguments
+        if request.purpose is AIRequestPurpose.CONVERSATIONAL_RESPONSE:
+            return arguments
+        raise AIInternalProviderError("AI request purpose is unsupported.")
 
     @staticmethod
     def _normalize_error(error: Exception) -> AIProviderException:
@@ -156,6 +164,7 @@ class OpenAIProvider(AIProvider):
                     ai_request_id=request.ai_request_id,
                     request_id=request.request_id,
                     provider_id=_PROVIDER_ID,
+                    purpose=request.purpose,
                 )
             )
 
@@ -179,6 +188,7 @@ class OpenAIProvider(AIProvider):
                         0.0,
                         (response.completed_at - started_at).total_seconds(),
                     ),
+                    purpose=request.purpose,
                 )
             )
 
@@ -197,5 +207,6 @@ class OpenAIProvider(AIProvider):
                     request_id=request.request_id,
                     provider_id=_PROVIDER_ID,
                     error_code=type(error).__name__,
+                    purpose=request.purpose,
                 )
             )

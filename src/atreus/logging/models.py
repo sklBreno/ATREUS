@@ -22,3 +22,4 @@ class StructuredLogRecord:
     lifecycle_state: str | None = None
     provider_id: str | None = None
     model_id: str | None = None
+    ai_request_purpose: str | None = None

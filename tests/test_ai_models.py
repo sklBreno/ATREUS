@@ -61,6 +61,20 @@ def test_ai_request_rejects_invalid_timeout(timeout: float) -> None:
         )
 
 
+@pytest.mark.parametrize("max_output_tokens", [0, -1, 1.5, True])
+def test_ai_request_rejects_invalid_output_limit(max_output_tokens: object) -> None:
+    with pytest.raises(InvalidAIRequestError):
+        AIRequest(
+            uuid4(),
+            uuid4(),
+            AIRequestPurpose.CONVERSATIONAL_RESPONSE,
+            "instruction",
+            "content",
+            10,
+            max_output_tokens,  # type: ignore[arg-type]
+        )
+
+
 def test_ai_response_normalizes_time_and_hides_content_from_repr() -> None:
     request = make_ai_request()
     response = AIResponse(

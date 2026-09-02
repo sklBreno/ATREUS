@@ -4,6 +4,7 @@ import re
 from uuid import UUID
 
 from atreus.ai.models import (
+    CONVERSATION_RESPONDER_SERVICE_ID,
     REQUEST_INTERPRETER_SERVICE_ID,
     RequestInterpretation,
 )
@@ -125,6 +126,19 @@ _SHELL_OPERATOR_MARKERS = (
     "/",
     ".exe",
 )
+_NON_EXECUTIVE_CAPABILITY_QUESTIONS = frozenset(
+    {
+        "can you open calculator",
+        "can you open notepad",
+        "can you open spotify",
+        "você consegue abrir a calculadora",
+        "voce consegue abrir a calculadora",
+        "você consegue abrir o bloco de notas",
+        "voce consegue abrir o bloco de notas",
+        "você consegue abrir o spotify",
+        "voce consegue abrir o spotify",
+    }
+)
 
 
 class DeterministicDecisionEngine(DecisionEngine):
@@ -221,7 +235,10 @@ class DeterministicDecisionEngine(DecisionEngine):
         deterministic_definition = deterministic_application_action_definition(
             decision_input.request.content
         )
-        if deterministic_definition is not None and not deterministic_definition.supported:
+        if (
+            deterministic_definition is not None
+            and not deterministic_definition.supported
+        ):
             return Decision(
                 request_id,
                 DecisionOutcome.IGNORE,
@@ -255,6 +272,9 @@ class DeterministicDecisionEngine(DecisionEngine):
         if (
             candidates
             and not explicitly_targeted
+            and not self._is_non_executive_capability_question(
+                decision_input.request.content
+            )
             and self._can_delegate_for_interpretation(decision_input)
         ):
             return Decision(
@@ -343,18 +363,15 @@ class DeterministicDecisionEngine(DecisionEngine):
                 request_id,
                 unblocked,
             )
-        if (
-            request_type in (RequestType.QUESTION, RequestType.CONVERSATION)
-            and decision_input.user_policy.allow_delegation
-            and decision_input.user_policy.delegation_service_id
-            and decision_input.user_policy.delegation_service_id
-            != REQUEST_INTERPRETER_SERVICE_ID
-        ):
+        if request_type in (
+            RequestType.QUESTION,
+            RequestType.CONVERSATION,
+        ) and self._can_delegate_for_conversation(decision_input):
             return Decision(
                 request_id,
                 DecisionOutcome.DELEGATE,
-                decision_input.user_policy.delegation_service_id,
-                "delegation_service_available",
+                CONVERSATION_RESPONDER_SERVICE_ID,
+                "conversational_response_available",
             )
         return Decision(
             request_id,
@@ -526,8 +543,8 @@ class DeterministicDecisionEngine(DecisionEngine):
     ) -> bool:
         if (
             not decision_input.user_policy.allow_delegation
-            or decision_input.user_policy.delegation_service_id
-            != REQUEST_INTERPRETER_SERVICE_ID
+            or REQUEST_INTERPRETER_SERVICE_ID
+            not in decision_input.user_policy.delegation_service_ids
             or decision_input.classification.request_type
             not in {RequestType.COMMAND, RequestType.INTENTION, RequestType.QUESTION}
         ):
@@ -556,6 +573,22 @@ class DeterministicDecisionEngine(DecisionEngine):
         return len(targets) == 1 and (
             action_count in {1, 2} or (action_count == 0 and semantic_cue)
         )
+
+    @staticmethod
+    def _is_non_executive_capability_question(request_content: str) -> bool:
+        normalized = DeterministicDecisionEngine._normalize_request(request_content)
+        return normalized in _NON_EXECUTIVE_CAPABILITY_QUESTIONS
+
+    @staticmethod
+    def _can_delegate_for_conversation(decision_input: DecisionInput) -> bool:
+        if (
+            not decision_input.user_policy.allow_delegation
+            or CONVERSATION_RESPONDER_SERVICE_ID
+            not in decision_input.user_policy.delegation_service_ids
+        ):
+            return False
+        content = decision_input.request.content.casefold()
+        return not any(marker in content for marker in _SHELL_OPERATOR_MARKERS)
 
     @staticmethod
     def _decide_command(
@@ -665,6 +698,16 @@ class DeterministicDecisionEngine(DecisionEngine):
         if len(identifiers) != len(set(identifiers)):
             raise InconsistentDecisionInputError(
                 "Candidate capability identifiers must be unique."
+            )
+        delegation_service_ids = decision_input.user_policy.delegation_service_ids
+        if any(
+            not isinstance(identifier, str)
+            or not identifier.strip()
+            or identifier != identifier.strip()
+            for identifier in delegation_service_ids
+        ) or len(delegation_service_ids) != len(set(delegation_service_ids)):
+            raise InconsistentDecisionInputError(
+                "Delegation service identifiers must be normalized and unique."
             )
         interpretation = decision_input.interpretation
         if interpretation is not None and (

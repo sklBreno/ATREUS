@@ -7,6 +7,7 @@ import pytest
 
 from atreus.ai.exceptions import InvalidRequestInterpretationError
 from atreus.ai.models import (
+    CONVERSATION_RESPONDER_SERVICE_ID,
     REQUEST_INTERPRETER_SERVICE_ID,
     AIProviderAvailability,
     AIProviderAvailabilityState,
@@ -715,7 +716,7 @@ def test_core_uses_one_interpretation_and_second_decision_without_execution() ->
             (),
             True,
             True,
-            REQUEST_INTERPRETER_SERVICE_ID,
+            (REQUEST_INTERPRETER_SERVICE_ID,),
         ),
     )
     decisions: list[DecisionMade] = []
@@ -748,7 +749,7 @@ def test_core_preserves_exact_ai_action_through_confirmation_and_planning() -> N
             blocked_capability_ids=(),
             allow_interruption=True,
             allow_delegation=True,
-            delegation_service_id=REQUEST_INTERPRETER_SERVICE_ID,
+            delegation_service_ids=(REQUEST_INTERPRETER_SERVICE_ID,),
         ),
     )
 
@@ -805,7 +806,7 @@ def test_confirmation_flow_captures_context_and_memory_once_per_request() -> Non
             (),
             True,
             True,
-            REQUEST_INTERPRETER_SERVICE_ID,
+            (REQUEST_INTERPRETER_SERVICE_ID,),
         ),
     )
 
@@ -838,7 +839,7 @@ def test_core_deterministic_application_commands_make_zero_ai_calls(
             (),
             True,
             True,
-            REQUEST_INTERPRETER_SERVICE_ID,
+            (REQUEST_INTERPRETER_SERVICE_ID,),
         ),
     )
 
@@ -862,7 +863,7 @@ def test_interpreter_failure_is_sanitized_and_never_executes() -> None:
             (),
             True,
             True,
-            REQUEST_INTERPRETER_SERVICE_ID,
+            (REQUEST_INTERPRETER_SERVICE_ID,),
         ),
     )
     errors: list[ErrorOccurred] = []
@@ -922,7 +923,7 @@ def test_confirmation_coordinator_failure_is_sanitized_before_execution() -> Non
                 (),
                 True,
                 True,
-                "ai.default",
+                (CONVERSATION_RESPONDER_SERVICE_ID,),
             ),
             DecisionOutcome.DELEGATE,
         ),

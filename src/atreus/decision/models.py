@@ -40,7 +40,7 @@ class UserPolicy:
     blocked_capability_ids: tuple[str, ...]
     allow_interruption: bool
     allow_delegation: bool
-    delegation_service_id: str | None = None
+    delegation_service_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

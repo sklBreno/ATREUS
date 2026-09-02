@@ -4,7 +4,12 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
-from atreus.ai.models import REQUEST_INTERPRETER_SERVICE_ID, AIProviderAvailabilityState
+from atreus.ai.conversation_responder import ProviderBackedConversationResponder
+from atreus.ai.models import (
+    CONVERSATION_RESPONDER_SERVICE_ID,
+    REQUEST_INTERPRETER_SERVICE_ID,
+    AIProviderAvailabilityState,
+)
 from atreus.ai.request_interpreter import StructuredRequestInterpreter
 from atreus.ai.unavailable_availability import UnavailableAIAvailabilityProvider
 from atreus.capability.application_status import ApplicationStatusCapability
@@ -206,6 +211,11 @@ class Bootstrap:
             if ai_available
             else None
         )
+        conversation_responder = ProviderBackedConversationResponder(
+            ai_provider,
+            registry,
+            configuration.ai_timeout_seconds,
+        )
         started_at = self._clock.now()
         core = Core(
             event_bus=event_bus,
@@ -230,10 +240,11 @@ class Bootstrap:
                 permission_grants=permission_grants,
                 blocked_capability_ids=(),
                 allow_interruption=True,
-                allow_delegation=ai_available,
-                delegation_service_id=(
-                    REQUEST_INTERPRETER_SERVICE_ID if ai_available else None
-                ),
+                allow_delegation=True,
+                delegation_service_ids=(
+                    (REQUEST_INTERPRETER_SERVICE_ID,) if ai_available else ()
+                )
+                + (CONVERSATION_RESPONDER_SERVICE_ID,),
             ),
             planning_constraints=PlanningConstraints(
                 allowed_capability_ids=(
@@ -251,6 +262,7 @@ class Bootstrap:
                 DeterministicInteractionLanguageResolver()
             ),
             request_interpreter=request_interpreter,
+            conversation_responder=conversation_responder,
         )
         return InteractiveRuntime(core, self._clock), event_bus
 

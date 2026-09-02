@@ -10,7 +10,7 @@ from atreus.execution.models import (
     CapabilityExecutionResult,
     CapabilityExecutionStatus,
 )
-from atreus.interaction.models import InteractionLanguage
+from atreus.interaction.models import ConversationalResponse, InteractionLanguage
 from atreus.planner.models import Plan
 from atreus.request_classifier.models import ClassifiedRequest
 
@@ -50,4 +50,5 @@ class CoreRequestResult:
     plan: Plan | None
     execution_results: tuple[CapabilityExecutionResult, ...]
     confirmation_prompt: ConfirmationPrompt | None = None
+    conversational_response: ConversationalResponse | None = None
     interaction_language: InteractionLanguage = InteractionLanguage.PT_BR

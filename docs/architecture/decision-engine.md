@@ -91,7 +91,7 @@ Version 1 supports:
 - `IGNORE`: Take no action because policy or context makes intervention
   inappropriate.
 - `DELEGATE`: Send the request to an identified non-capability service contract,
-  such as `ai.request_interpreter`.
+  such as `ai.request_interpreter` or `ai.conversation_responder`.
 - `REQUEST_PLANNING`: Ask the Planner to transform a high-level goal into a
   plan.
 
@@ -116,6 +116,12 @@ The engine returns an immutable `Decision` containing:
 using the original request.
 
 Human-readable response text is not part of the Decision contract.
+
+Eligible `QUESTION` and `CONVERSATION` requests may return
+`DELEGATE(ai.conversation_responder)` after higher-priority operational,
+confirmation, safety, confidence, policy, and availability checks. Decision
+Engine selects only the service identifier. It does not generate conversational
+text or invoke AI.
 
 AI Provider V0 preserves two explicit evaluations. The first may return
 `DELEGATE(ai.request_interpreter)` only when the deterministic path did not
@@ -218,6 +224,12 @@ matrix, Capability Catalog availability, user blocks, permissions, and
 operational state remain authoritative. Open requires confirmation; status is
 read-only and does not.
 
+Conversation delegation is separate from request interpretation. Exact
+operational commands and pending confirmation responses retain precedence.
+Questions about current ATREUS capability support are delegated for a
+non-executing answer and never treated as action requests. Suspicious composed
+command syntax does not enter conversational delegation.
+
 An earlier restrictive rule takes precedence over a later permissive rule.
 Conflicting rules must not be resolved by arbitrary registration order.
 
@@ -263,8 +275,9 @@ Version 1 decision policy should be deterministic. AI is not required to make
 platform control decisions.
 
 Decision Engine does not invoke AI. It decides whether Core may delegate to the
-Request Interpreter and later evaluates the validated result as untrusted,
-non-executable input.
+Request Interpreter or Conversation Responder. It later evaluates interpreted
+action data as untrusted, non-executable input, while conversational responses
+do not return for a second decision and cannot enter execution.
 
 Platform behavior evaluation uses the same separation:
 

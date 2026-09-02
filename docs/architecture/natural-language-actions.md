@@ -110,6 +110,13 @@ Natural status request
 The provider is invoked at most once. Status rendering is deterministic and
 does not make another AI request.
 
+Conversational AI is a separate non-executing path. Questions such as whether
+ATREUS can open an application may be delegated to
+`ai.conversation_responder`, but they never create an `ApplicationAction`,
+confirmation, plan, or capability invocation. Operational commands retain the
+action path above, and conversation cannot bypass its local action matrix,
+permissions, or confirmation requirements.
+
 ---
 
 # Capabilities and Permissions

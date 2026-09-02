@@ -15,6 +15,7 @@ from atreus.application.models import ApplicationAction
 from atreus.events.models import Event
 
 REQUEST_INTERPRETER_SERVICE_ID = "ai.request_interpreter"
+CONVERSATION_RESPONDER_SERVICE_ID = "ai.conversation_responder"
 
 
 class AIProviderAvailabilityState(StrEnum):
@@ -37,6 +38,7 @@ class AIRequestPurpose(StrEnum):
     """Identify one approved bounded use of an AI Provider."""
 
     REQUEST_INTERPRETATION = "REQUEST_INTERPRETATION"
+    CONVERSATIONAL_RESPONSE = "CONVERSATIONAL_RESPONSE"
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +51,7 @@ class AIRequest:
     instruction: str = field(repr=False)
     content: str = field(repr=False)
     timeout_seconds: float
+    max_output_tokens: int = 128
 
     def __post_init__(self) -> None:
         """Validate the bounded provider request contract."""
@@ -70,6 +73,10 @@ class AIRequest:
         ):
             raise InvalidAIRequestError(
                 "AI request timeout_seconds must be positive and finite."
+            )
+        if type(self.max_output_tokens) is not int or self.max_output_tokens <= 0:
+            raise InvalidAIRequestError(
+                "AI request max_output_tokens must be a positive integer."
             )
 
 
@@ -142,6 +149,7 @@ class AIRequestStarted(Event):
     ai_request_id: UUID
     request_id: UUID
     provider_id: str
+    purpose: AIRequestPurpose
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -153,6 +161,7 @@ class AIRequestCompleted(Event):
     provider_id: str
     model_id: str
     duration_seconds: float
+    purpose: AIRequestPurpose
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -163,3 +172,4 @@ class AIRequestFailed(Event):
     request_id: UUID
     provider_id: str
     error_code: str
+    purpose: AIRequestPurpose
