@@ -21,14 +21,23 @@ _ENVIRONMENT_VARIABLES = {
     "working_memory_entry_ttl_seconds": (
         "ATREUS_WORKING_MEMORY_ENTRY_TTL_SECONDS"
     ),
+    "ai_enabled": "ATREUS_AI_ENABLED",
+    "ai_model": "ATREUS_AI_MODEL",
+    "ai_timeout_seconds": "ATREUS_AI_TIMEOUT_SECONDS",
     "start_with_windows": "ATREUS_START_WITH_WINDOWS",
     "always_on": "ATREUS_ALWAYS_ON",
 }
 
-_BOOLEAN_FIELDS = {"debug", "start_with_windows", "always_on"}
+_BOOLEAN_FIELDS = {
+    "debug",
+    "ai_enabled",
+    "start_with_windows",
+    "always_on",
+}
 _INTEGER_FIELDS = {
     "working_memory_capacity",
     "working_memory_entry_ttl_seconds",
+    "ai_timeout_seconds",
 }
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 _FALSE_VALUES = {"0", "false", "no", "off"}

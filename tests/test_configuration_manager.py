@@ -15,6 +15,9 @@ def test_manager_creates_configuration_from_loaded_values() -> None:
             "ATREUS_ALWAYS_ON": "false",
             "ATREUS_WORKING_MEMORY_CAPACITY": "24",
             "ATREUS_WORKING_MEMORY_ENTRY_TTL_SECONDS": "600",
+            "ATREUS_AI_ENABLED": "true",
+            "ATREUS_AI_MODEL": "test-model",
+            "ATREUS_AI_TIMEOUT_SECONDS": "20",
         },
     )
 
@@ -24,6 +27,9 @@ def test_manager_creates_configuration_from_loaded_values() -> None:
     assert configuration.always_on is False
     assert configuration.working_memory_capacity == 24
     assert configuration.working_memory_entry_ttl_seconds == 600
+    assert configuration.ai_enabled is True
+    assert configuration.ai_model == "test-model"
+    assert configuration.ai_timeout_seconds == 20
 
 
 def test_manager_returns_same_configuration_instance() -> None:

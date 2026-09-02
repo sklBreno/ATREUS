@@ -4,9 +4,13 @@ from uuid import uuid4
 
 import pytest
 
+from atreus.ai.exceptions import InvalidRequestInterpretationError
 from atreus.ai.models import (
+    REQUEST_INTERPRETER_SERVICE_ID,
+    AIIntent,
     AIProviderAvailability,
     AIProviderAvailabilityState,
+    RequestInterpretation,
 )
 from atreus.capability.open_application import OpenApplicationCapability
 from atreus.capability.registry import InMemoryCapabilityRegistry
@@ -50,6 +54,7 @@ from atreus.interfaces.decision_engine import DecisionEngine
 from atreus.interfaces.memory import MemorySnapshotProvider
 from atreus.interfaces.planner import Planner
 from atreus.interfaces.request_classifier import RequestClassifier
+from atreus.interfaces.request_interpreter import RequestInterpreter
 from atreus.interfaces.system_information import SystemInformationProvider
 from atreus.memory.models import MemorySnapshot
 from atreus.planner.models import (
@@ -113,6 +118,8 @@ def build_core(
     user_policy: UserPolicy | None = None,
     context_provider: ContextProvider | None = None,
     memory_snapshot_provider: MemorySnapshotProvider | None = None,
+    request_interpreter: RequestInterpreter | None = None,
+    decision_engine: DecisionEngine | None = None,
 ) -> tuple[Core, InProcessEventBus]:
     """Compose the complete controlled Phase B pipeline for tests."""
     event_bus = InProcessEventBus()
@@ -146,9 +153,12 @@ def build_core(
             classifier or DeterministicRequestClassifier(event_bus)
         ),
         capability_catalog=registry,
-        decision_engine=DeterministicDecisionEngine(
-            DecisionPolicy(0.5),
-            event_bus,
+        decision_engine=(
+            decision_engine
+            or DeterministicDecisionEngine(
+                DecisionPolicy(0.5),
+                event_bus,
+            )
         ),
         planner=planner or DeterministicPlanner(registry, clock, event_bus),
         capability_runtime=runtime,
@@ -180,8 +190,63 @@ def build_core(
             require_confirmation=require_confirmation,
         ),
         execution_timeout_seconds=None,
+        request_interpreter=request_interpreter,
     )
     return core, event_bus
+
+
+class RecordingRequestInterpreter(RequestInterpreter):
+    """Return one configured interpretation while recording requests."""
+
+    def __init__(self, error: Exception | None = None) -> None:
+        """Initialize successful or failing interpretation behavior."""
+        self._error = error
+        self.requests: list[Request] = []
+
+    def interpret(self, request: Request) -> RequestInterpretation:
+        """Record and return a non-executable interpretation."""
+        self.requests.append(request)
+        if self._error is not None:
+            raise self._error
+        return RequestInterpretation(
+            request.request_id,
+            AIIntent.OPEN_APPLICATION,
+            "application.open",
+            "calculator",
+            0.9,
+        )
+
+
+class RecordingTwoPhaseDecisionEngine(DecisionEngine):
+    """Record both decision inputs for one bounded interpretation flow."""
+
+    def __init__(self) -> None:
+        """Initialize an empty input collection."""
+        self.inputs: list[DecisionInput] = []
+
+    def decide(self, decision_input: DecisionInput) -> Decision:
+        """Delegate once and require confirmation after interpretation."""
+        self.inputs.append(decision_input)
+        if decision_input.interpretation is None:
+            return Decision(
+                decision_input.request.request_id,
+                DecisionOutcome.DELEGATE,
+                REQUEST_INTERPRETER_SERVICE_ID,
+                "bounded_request_interpretation_required",
+            )
+        return Decision(
+            decision_input.request.request_id,
+            DecisionOutcome.ASK_FOR_CONFIRMATION,
+            "application.open",
+            "ai_interpretation_requires_confirmation",
+        )
+
+    def decide_platform_behavior(
+        self,
+        decision_input: PlatformBehaviorDecisionInput,
+    ) -> PlatformBehaviorDecision:
+        """Reject platform evaluation outside this test boundary."""
+        raise AssertionError("Platform behavior evaluation is not expected.")
 
 
 class RecordingDecisionEngine(DecisionEngine):
@@ -525,6 +590,121 @@ def test_core_rejects_unrelated_desktop_commands(content: str) -> None:
     assert result.plan is None
     assert result.execution_results == ()
     assert controller.calls == []
+
+
+def test_core_uses_one_interpretation_and_second_decision_without_execution() -> None:
+    controller = RecordingApplicationController()
+    interpreter = RecordingRequestInterpreter()
+    context_provider = make_context_provider()
+    memory_provider = StaticMemorySnapshotProvider()
+    core, event_bus = build_core(
+        application_controller=controller,
+        context_provider=context_provider,
+        memory_snapshot_provider=memory_provider,
+        request_interpreter=interpreter,
+        user_policy=UserPolicy(
+            ("application.control",),
+            (),
+            True,
+            True,
+            REQUEST_INTERPRETER_SERVICE_ID,
+        ),
+    )
+    decisions: list[DecisionMade] = []
+    event_bus.subscribe(DecisionMade, decisions.append)
+
+    result = core.handle_request(make_request("Please open calculator for me"))
+
+    assert len(interpreter.requests) == 1
+    assert len(decisions) == 2
+    assert decisions[0].outcome is DecisionOutcome.DELEGATE
+    assert decisions[1].outcome is DecisionOutcome.ASK_FOR_CONFIRMATION
+    assert result.decision.outcome is DecisionOutcome.ASK_FOR_CONFIRMATION
+    assert result.plan is None
+    assert result.execution_results == ()
+    assert controller.calls == []
+    assert context_provider.call_count == 1
+    assert memory_provider.call_count == 1
+
+
+def test_core_reuses_context_and_memory_across_both_decisions() -> None:
+    interpreter = RecordingRequestInterpreter()
+    decision_engine = RecordingTwoPhaseDecisionEngine()
+    context_provider = make_context_provider()
+    memory_provider = StaticMemorySnapshotProvider()
+    core, _ = build_core(
+        application_controller=RecordingApplicationController(),
+        context_provider=context_provider,
+        memory_snapshot_provider=memory_provider,
+        request_interpreter=interpreter,
+        decision_engine=decision_engine,
+    )
+
+    result = core.handle_request(make_request("Please open calculator for me"))
+
+    assert result.decision.outcome is DecisionOutcome.ASK_FOR_CONFIRMATION
+    assert len(decision_engine.inputs) == 2
+    assert decision_engine.inputs[0].context is decision_engine.inputs[1].context
+    assert decision_engine.inputs[0].memory is decision_engine.inputs[1].memory
+    assert decision_engine.inputs[0].interpretation is None
+    assert decision_engine.inputs[1].interpretation is not None
+    assert context_provider.call_count == 1
+    assert memory_provider.call_count == 1
+    assert len(interpreter.requests) == 1
+
+
+@pytest.mark.parametrize("content", ("open calculator", "open notepad"))
+def test_core_deterministic_application_commands_make_zero_ai_calls(
+    content: str,
+) -> None:
+    controller = RecordingApplicationController()
+    interpreter = RecordingRequestInterpreter()
+    core, _ = build_core(
+        application_controller=controller,
+        request_interpreter=interpreter,
+        user_policy=UserPolicy(
+            ("application.control",),
+            (),
+            True,
+            True,
+            REQUEST_INTERPRETER_SERVICE_ID,
+        ),
+    )
+
+    result = core.handle_request(make_request(content))
+
+    assert result.execution_results[0].status is CapabilityExecutionStatus.SUCCEEDED
+    assert interpreter.requests == []
+
+
+def test_interpreter_failure_is_sanitized_and_never_executes() -> None:
+    private_detail = "private provider response and secret"
+    interpreter = RecordingRequestInterpreter(
+        InvalidRequestInterpretationError(private_detail)
+    )
+    controller = RecordingApplicationController()
+    core, event_bus = build_core(
+        application_controller=controller,
+        request_interpreter=interpreter,
+        user_policy=UserPolicy(
+            ("application.control",),
+            (),
+            True,
+            True,
+            REQUEST_INTERPRETER_SERVICE_ID,
+        ),
+    )
+    errors: list[ErrorOccurred] = []
+    event_bus.subscribe(ErrorOccurred, errors.append)
+
+    result = core.handle_request(make_request("Please open calculator for me"))
+
+    assert result.decision.outcome is DecisionOutcome.DELEGATE
+    assert result.execution_results == ()
+    assert controller.calls == []
+    assert len(errors) == 1
+    assert errors[0].error_type == "InvalidRequestInterpretationError"
+    assert private_detail not in repr(errors[0])
 
 
 @pytest.mark.parametrize(

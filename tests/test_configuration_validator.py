@@ -28,6 +28,9 @@ def test_validator_accepts_valid_configuration() -> None:
         ("working_memory_capacity", 0),
         ("working_memory_entry_ttl_seconds", -1),
         ("working_memory_capacity", True),
+        ("ai_enabled", "true"),
+        ("ai_timeout_seconds", 0),
+        ("ai_timeout_seconds", True),
     ),
 )
 def test_validator_rejects_invalid_values(
@@ -55,3 +58,14 @@ def test_validator_rejects_unexpected_field() -> None:
 
     with pytest.raises(ConfigurationValidationError, match="Unexpected"):
         ConfigurationValidator().validate(values)
+
+
+def test_validator_requires_model_only_when_ai_is_enabled() -> None:
+    disabled_values: dict[str, object] = _valid_values()
+    ConfigurationValidator().validate(disabled_values)
+
+    enabled_values = dict(disabled_values)
+    enabled_values["ai_enabled"] = True
+
+    with pytest.raises(ConfigurationValidationError, match="ai_model"):
+        ConfigurationValidator().validate(enabled_values)

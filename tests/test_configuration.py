@@ -17,6 +17,9 @@ def test_configuration_uses_platform_defaults() -> None:
     assert configuration.log_level == "INFO"
     assert configuration.working_memory_capacity == 64
     assert configuration.working_memory_entry_ttl_seconds == 1800
+    assert configuration.ai_enabled is False
+    assert configuration.ai_model == ""
+    assert configuration.ai_timeout_seconds == 30
     assert configuration.start_with_windows is True
     assert configuration.always_on is True
 
@@ -28,3 +31,10 @@ def test_configuration_is_immutable_and_uses_slots() -> None:
         configuration.debug = False  # type: ignore[misc]
 
     assert not hasattr(configuration, "__dict__")
+
+
+def test_configuration_contains_no_openai_credential() -> None:
+    configuration = Configuration()
+
+    assert not hasattr(configuration, "openai_api_key")
+    assert "API_KEY" not in repr(configuration)

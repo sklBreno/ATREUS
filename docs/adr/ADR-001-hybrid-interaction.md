@@ -4,7 +4,7 @@
 
 **Date:** 2026-07-02
 
-**Last Updated:** 2026-08-17
+**Last Updated:** 2026-09-01
 
 ---
 
@@ -43,6 +43,14 @@ The Core owns routing. It assembles current context, platform state, user
 policy, configuration, and capability metadata for the Decision Engine. The
 Decision Engine returns an explicit outcome, and the Core applies that outcome
 through the appropriate interface.
+
+AI Provider V0 preserves this ownership. When an operational application-open
+request is not resolved by the deterministic fast path, Decision Engine may
+return `DELEGATE(ai.request_interpreter)`. Core invokes that bounded service at
+most once and submits its locally validated, non-executable interpretation to a
+second Decision Engine evaluation. A valid V0 interpretation requires user
+confirmation and never directly invokes Planner, Capability Runtime, or System
+Layer.
 
 ---
 
@@ -102,6 +110,11 @@ AI Provider or a deterministic information capability
 
 AI is used only when it adds value and an approved provider is available.
 
+V0 does not implement free-form answers or conversation. Its only AI purpose is
+strict structured interpretation of `OPEN_APPLICATION` with an already approved
+application target. Deterministic commands such as `open calculator` and
+`open notepad` do not call AI.
+
 ---
 
 ## Task
@@ -138,6 +151,7 @@ Deterministic response capability, AI Provider, or no action
 ```
 
 `CONVERSATION` does not require a dedicated conversation module in Version 1.
+AI Provider V0 does not implement this conversational route.
 
 ---
 
@@ -158,6 +172,7 @@ The hybrid model provides:
 - Fast deterministic execution for clear commands.
 - Explicit planning for supported high-level goals.
 - Optional AI use for requests that benefit from it.
+- Mandatory confirmation for V0 AI interpretations before any future action.
 - Separate handling for constrained tasks and conversations.
 - Reduced dependency on language models.
 - Clear ownership between classification, decision, orchestration, planning,

@@ -5,6 +5,11 @@ from uuid import uuid4
 
 import pytest
 
+from atreus.ai.models import (
+    REQUEST_INTERPRETER_SERVICE_ID,
+    AIIntent,
+    RequestInterpretation,
+)
 from atreus.capability.models import (
     CapabilityAvailability,
     CapabilityAvailabilityState,
@@ -71,6 +76,7 @@ def make_input(
     delegation_service_id: str | None = None,
     operational_state: OperationalState = OperationalState.ACTIVE,
     performance_profile: PerformanceProfile = PerformanceProfile.BALANCED,
+    interpretation: RequestInterpretation | None = None,
 ) -> DecisionInput:
     """Create one coherent immutable DecisionInput."""
     request_id = uuid4()
@@ -105,6 +111,7 @@ def make_input(
             delegation_service_id,
         ),
         candidate_capabilities=candidates,
+        interpretation=interpretation,
     )
 
 
@@ -242,6 +249,160 @@ def test_question_delegates_only_to_explicit_allowed_service() -> None:
 
     assert decision.outcome is DecisionOutcome.DELEGATE
     assert decision.target == "ai.default"
+
+
+def test_eligible_natural_language_request_delegates_to_interpreter() -> None:
+    decision = make_engine().decide(
+        make_input(
+            content="Please open calculator for me",
+            request_type=RequestType.INTENTION,
+            confidence=0.25,
+            candidates=(
+                make_metadata(
+                    "application.open",
+                    permissions=("application.control",),
+                ),
+            ),
+            permission_grants=("application.control",),
+            allow_delegation=True,
+            delegation_service_id=REQUEST_INTERPRETER_SERVICE_ID,
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.DELEGATE
+    assert decision.target == REQUEST_INTERPRETER_SERVICE_ID
+
+
+@pytest.mark.parametrize(
+    "content",
+    (
+        "open calculator && shutdown",
+        "open notepad && calc",
+        "open spotify && anything",
+        "open calculator | powershell",
+        "open calculator $(whoami)",
+        "open calculator > output.txt",
+        "open calculator and restart",
+        "open calculator then open notepad",
+        "open calculator please run shutdown",
+        "shutdown computer",
+        "arbitrary text",
+        "run calculator",
+    ),
+)
+def test_suspicious_request_never_delegates_to_interpreter(content: str) -> None:
+    decision = make_engine().decide(
+        make_input(
+            content=content,
+            candidates=(make_metadata("application.open"),),
+            allow_delegation=True,
+            delegation_service_id=REQUEST_INTERPRETER_SERVICE_ID,
+        )
+    )
+
+    assert decision.outcome is not DecisionOutcome.DELEGATE
+
+
+def test_valid_interpretation_requires_confirmation_without_execution() -> None:
+    decision_input = make_input(
+        content="Please open calculator for me",
+        request_type=RequestType.INTENTION,
+        candidates=(
+            make_metadata(
+                "application.open",
+                permissions=("application.control",),
+            ),
+        ),
+        permission_grants=("application.control",),
+        allow_delegation=True,
+        delegation_service_id=REQUEST_INTERPRETER_SERVICE_ID,
+    )
+    interpretation = RequestInterpretation(
+        decision_input.request.request_id,
+        AIIntent.OPEN_APPLICATION,
+        "application.open",
+        "calculator",
+        0.9,
+    )
+
+    decision = make_engine().decide(
+        DecisionInput(
+            request=decision_input.request,
+            classification=decision_input.classification,
+            context=decision_input.context,
+            memory=decision_input.memory,
+            platform_state=decision_input.platform_state,
+            user_policy=decision_input.user_policy,
+            candidate_capabilities=decision_input.candidate_capabilities,
+            interpretation=interpretation,
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.ASK_FOR_CONFIRMATION
+    assert decision.target == "application.open"
+    assert decision.reason_code == "ai_interpretation_requires_confirmation"
+
+
+def test_interpretation_cannot_select_unavailable_capability() -> None:
+    decision_input = make_input(content="Please open calculator for me")
+    interpretation = RequestInterpretation(
+        decision_input.request.request_id,
+        AIIntent.OPEN_APPLICATION,
+        "application.open",
+        "calculator",
+        0.9,
+    )
+
+    decision = make_engine().decide(
+        DecisionInput(
+            request=decision_input.request,
+            classification=decision_input.classification,
+            context=decision_input.context,
+            memory=decision_input.memory,
+            platform_state=decision_input.platform_state,
+            user_policy=decision_input.user_policy,
+            candidate_capabilities=(),
+            interpretation=interpretation,
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.IGNORE
+    assert decision.reason_code == "interpreted_target_unavailable"
+
+
+def test_interpretation_cannot_bypass_permission_policy() -> None:
+    decision_input = make_input(
+        content="Please open calculator for me",
+        candidates=(
+            make_metadata(
+                "application.open",
+                permissions=("application.control",),
+            ),
+        ),
+    )
+    interpretation = RequestInterpretation(
+        decision_input.request.request_id,
+        AIIntent.OPEN_APPLICATION,
+        "application.open",
+        "calculator",
+        0.9,
+    )
+
+    decision = make_engine().decide(
+        DecisionInput(
+            request=decision_input.request,
+            classification=decision_input.classification,
+            context=decision_input.context,
+            memory=decision_input.memory,
+            platform_state=decision_input.platform_state,
+            user_policy=decision_input.user_policy,
+            candidate_capabilities=decision_input.candidate_capabilities,
+            interpretation=interpretation,
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.IGNORE
+    assert decision.reason_code == "required_permission_missing"
 
 
 def test_disabled_interruption_returns_suggestion_without_execution() -> None:

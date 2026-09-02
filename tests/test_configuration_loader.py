@@ -22,6 +22,9 @@ def test_loader_returns_default_configuration_values() -> None:
         "log_level": "INFO",
         "working_memory_capacity": 64,
         "working_memory_entry_ttl_seconds": 1800,
+        "ai_enabled": False,
+        "ai_model": "",
+        "ai_timeout_seconds": 30,
         "start_with_windows": True,
         "always_on": True,
     }
@@ -34,6 +37,9 @@ def test_loader_loads_process_environment_values() -> None:
         "ATREUS_LOG_LEVEL": "DEBUG",
         "ATREUS_WORKING_MEMORY_CAPACITY": "32",
         "ATREUS_WORKING_MEMORY_ENTRY_TTL_SECONDS": "900",
+        "ATREUS_AI_ENABLED": "true",
+        "ATREUS_AI_MODEL": "test-model",
+        "ATREUS_AI_TIMEOUT_SECONDS": "12",
     }
 
     values = ConfigurationLoader(
@@ -46,6 +52,19 @@ def test_loader_loads_process_environment_values() -> None:
     assert values["log_level"] == "DEBUG"
     assert values["working_memory_capacity"] == 32
     assert values["working_memory_entry_ttl_seconds"] == 900
+    assert values["ai_enabled"] is True
+    assert values["ai_model"] == "test-model"
+    assert values["ai_timeout_seconds"] == 12
+
+
+def test_loader_never_exposes_openai_api_key() -> None:
+    values = ConfigurationLoader(
+        env_file_path=None,
+        environment={"ATREUS_OPENAI_API_KEY": "private-key"},
+    ).load()
+
+    assert "openai_api_key" not in values
+    assert "private-key" not in repr(values)
 
 
 def test_loader_loads_env_file_values(tmp_path: Path) -> None:

@@ -55,6 +55,9 @@ class ConfigurationManager(ConfigurationProvider):
                 int,
                 values["working_memory_entry_ttl_seconds"],
             ),
+            ai_enabled=cast(bool, values["ai_enabled"]),
+            ai_model=cast(str, values["ai_model"]),
+            ai_timeout_seconds=cast(int, values["ai_timeout_seconds"]),
             start_with_windows=cast(bool, values["start_with_windows"]),
             always_on=cast(bool, values["always_on"]),
         )

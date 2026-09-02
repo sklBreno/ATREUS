@@ -1,5 +1,6 @@
 """Event Bus subscriber producing sanitized structured log records."""
 
+from atreus.ai.models import AIRequestCompleted, AIRequestFailed, AIRequestStarted
 from atreus.core.models import ErrorOccurred, RequestCompleted, RequestReceived
 from atreus.decision.models import DecisionMade
 from atreus.events.models import Subscription
@@ -37,6 +38,9 @@ type ObservableEvent = (
     | RuntimeStopping
     | RuntimeStopped
     | RuntimeFailed
+    | AIRequestStarted
+    | AIRequestCompleted
+    | AIRequestFailed
 )
 
 
@@ -75,6 +79,9 @@ class EventLogObserver:
             event_bus.subscribe(RuntimeStopping, self._observe),
             event_bus.subscribe(RuntimeStopped, self._observe),
             event_bus.subscribe(RuntimeFailed, self._observe),
+            event_bus.subscribe(AIRequestStarted, self._observe),
+            event_bus.subscribe(AIRequestCompleted, self._observe),
+            event_bus.subscribe(AIRequestFailed, self._observe),
         )
 
     def _observe(self, event: ObservableEvent) -> None:
@@ -106,6 +113,29 @@ class EventLogObserver:
                 message="Runtime lifecycle state changed.",
             )
         request_common = {**common, "request_id": event.request_id}
+        if isinstance(event, AIRequestStarted):
+            return StructuredLogRecord(
+                **request_common,
+                level="INFO",
+                provider_id=event.provider_id,
+                message="AI Provider request started.",
+            )
+        if isinstance(event, AIRequestCompleted):
+            return StructuredLogRecord(
+                **request_common,
+                level="INFO",
+                provider_id=event.provider_id,
+                model_id=event.model_id,
+                message="AI Provider request completed.",
+            )
+        if isinstance(event, AIRequestFailed):
+            return StructuredLogRecord(
+                **request_common,
+                level="ERROR",
+                provider_id=event.provider_id,
+                reason_code=event.error_code,
+                message="AI Provider request failed.",
+            )
         if isinstance(event, RequestReceived):
             return StructuredLogRecord(
                 **request_common,

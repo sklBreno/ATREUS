@@ -104,6 +104,8 @@ Examples:
 - The Context Engine owns `ContextChanged`.
 - The Planner owns `PlanCreated`.
 - The Capability Runtime owns capability execution events.
+- The AI Provider owns `AIRequestStarted`, `AIRequestCompleted`, and
+  `AIRequestFailed`.
 
 The Core must not republish a domain event under the same meaning. Consumers
 that need the event subscribe to its owner through the Event Bus abstraction.
@@ -269,6 +271,11 @@ Secrets, raw AI prompts, file contents, conversation contents, and detailed
 context signals must not be included unless an approved contract explicitly
 requires them. Logging must identify event type and correlation metadata without
 serializing sensitive payloads by default.
+
+AI Provider V0 lifecycle events contain only correlation identifiers, provider
+and model identifiers where applicable, duration, and a sanitized error code.
+They never contain instruction, request content, raw response, credential, SDK
+exception message, Context, or Working Memory.
 
 Subscribers must not mutate shared state embedded in events.
 

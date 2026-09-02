@@ -8,7 +8,7 @@
 
 **Owner:** ATREUS Core Team
 
-**Last Updated:** 2026-08-31
+**Last Updated:** 2026-09-01
 
 ---
 
@@ -264,6 +264,25 @@ Other numeric defaults remain owned by their future implementation
 configuration, validated before use, and injected into the responsible module.
 Modules must not hardcode values that belong to these policies.
 
+# AI Provider V0 Settings
+
+Configuration exposes only these non-secret AI settings:
+
+- `ai_enabled`, default `False`.
+- `ai_model`, empty while AI is disabled and required to be non-empty when AI
+  is enabled.
+- `ai_timeout_seconds`, default `30` and required to be a positive integer.
+
+The corresponding environment names are `ATREUS_AI_ENABLED`,
+`ATREUS_AI_MODEL`, and `ATREUS_AI_TIMEOUT_SECONDS`. Existing source priority
+remains process environment over `.env` over built-in defaults. V0 does not add
+an `ai_provider` selector or dynamic reload.
+
+`ATREUS_OPENAI_API_KEY` is not a Configuration field. Configuration Loader does
+not recognize or return it, and `.env.example` does not declare it. Bootstrap
+reads that credential directly from the process environment only when AI is
+enabled and injects it into the concrete adapter.
+
 ---
 
 # Secrets
@@ -360,6 +379,9 @@ The module must be tested to ensure:
   architecture values.
 - Correct Working Memory defaults, positive-value validation, and source
   priority for capacity and entry TTL.
+- Correct AI-disabled default, model requirement, timeout validation, and
+  source priority for non-secret AI settings.
+- Absence of `ATREUS_OPENAI_API_KEY` from the Configuration pipeline.
 - Exclusion of secrets from Configuration objects, snapshots, representations,
   events, errors, and logs.
 - Consistent configuration availability across the platform.
