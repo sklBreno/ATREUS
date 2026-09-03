@@ -1,4 +1,4 @@
-"""Tests for provider-agnostic stateless conversational responses."""
+"""Tests for provider-agnostic bounded conversational responses."""
 
 from dataclasses import FrozenInstanceError
 from typing import cast
@@ -8,10 +8,16 @@ import pytest
 
 from atreus.ai.conversation_responder import ProviderBackedConversationResponder
 from atreus.ai.exceptions import (
+    AIAuthenticationError,
+    AIInternalProviderError,
+    AINetworkError,
+    AIRateLimitError,
+    AIRequestTimeoutError,
     ConversationUnavailableError,
     InvalidConversationResponseError,
 )
 from atreus.ai.models import (
+    AIMessageRole,
     AIProviderAvailability,
     AIProviderAvailabilityState,
     AIRequest,
@@ -24,6 +30,12 @@ from atreus.capability.models import (
     CapabilityMetadata,
 )
 from atreus.capability.registry import InMemoryCapabilityRegistry
+from atreus.conversation.history import InMemoryConversationHistory
+from atreus.conversation.models import (
+    ConversationExchange,
+    ConversationHistoryPolicy,
+    ConversationHistorySnapshot,
+)
 from atreus.interaction.exceptions import (
     InvalidAssistantCapabilitySummaryError,
     InvalidConversationalResponseError,
@@ -34,8 +46,10 @@ from atreus.interaction.models import (
     InteractionLanguage,
 )
 from atreus.interfaces.ai_provider import AIProvider
+from atreus.interfaces.clock import Clock
+from atreus.interfaces.conversation_history import ConversationHistoryStore
 from atreus.shared.request import Request
-from tests.support import NOW
+from tests.support import NOW, FixedClock
 
 
 class RecordingConversationProvider(AIProvider):
@@ -48,11 +62,13 @@ class RecordingConversationProvider(AIProvider):
             AIProviderAvailabilityState.AVAILABLE
         ),
         mismatched_identity: bool = False,
+        error: Exception | None = None,
     ) -> None:
         """Initialize provider output, availability, and identity behavior."""
         self._content = content
         self._availability = availability
         self._mismatched_identity = mismatched_identity
+        self._error = error
         self.requests: list[AIRequest] = []
 
     def availability(self) -> AIProviderAvailability:
@@ -62,6 +78,8 @@ class RecordingConversationProvider(AIProvider):
     def generate(self, request: AIRequest) -> AIResponse:
         """Record and return one normalized fake response."""
         self.requests.append(request)
+        if self._error is not None:
+            raise self._error
         return AIResponse(
             request.ai_request_id,
             uuid4() if self._mismatched_identity else request.request_id,
@@ -79,6 +97,29 @@ class InvalidResponseTypeProvider(RecordingConversationProvider):
         """Return a deliberately invalid runtime value."""
         self.requests.append(request)
         return cast(AIResponse, object())
+
+
+class RecordingConversationHistory(InMemoryConversationHistory):
+    """Record history reads and append attempts."""
+
+    def __init__(
+        self,
+        policy: ConversationHistoryPolicy = ConversationHistoryPolicy(6, 12_000),
+    ) -> None:
+        """Initialize an empty recording store."""
+        super().__init__(FixedClock(), policy)
+        self.snapshot_calls = 0
+        self.append_calls = 0
+
+    def snapshot(self) -> ConversationHistorySnapshot:
+        """Record and return one immutable snapshot."""
+        self.snapshot_calls += 1
+        return super().snapshot()
+
+    def try_append(self, exchange: ConversationExchange) -> bool:
+        """Record and attempt one complete exchange append."""
+        self.append_calls += 1
+        return super().try_append(exchange)
 
 
 def make_request(content: str) -> Request:
@@ -117,14 +158,23 @@ def make_responder(
         "application.open",
         "application.status",
     ),
+    conversation_history: ConversationHistoryStore | None = None,
+    clock: Clock | None = None,
 ) -> tuple[ProviderBackedConversationResponder, RecordingConversationProvider]:
     """Create one responder and its recording provider."""
     selected_provider = provider or RecordingConversationProvider()
+    selected_clock = clock or FixedClock()
+    selected_history = conversation_history or InMemoryConversationHistory(
+        selected_clock,
+        ConversationHistoryPolicy(6, 12_000),
+    )
     return (
         ProviderBackedConversationResponder(
             selected_provider,
             make_registry(capability_ids),
             15,
+            selected_history,
+            selected_clock,
         ),
         selected_provider,
     )
@@ -304,26 +354,50 @@ def test_english_question_requests_an_english_response() -> None:
     assert "Answer in English" in provider.requests[0].instruction
 
 
-def test_each_request_is_independent_and_contains_no_conversation_history() -> None:
-    responder, provider = make_responder()
+def test_each_request_receives_one_bounded_prior_history_snapshot() -> None:
+    history = RecordingConversationHistory()
+    responder, provider = make_responder(conversation_history=history)
     first = make_request("what is DNS?")
     second = make_request("what is RAM?")
+    third = make_request("explain it more simply")
 
     responder.respond(first, InteractionLanguage.EN_US)
     responder.respond(second, InteractionLanguage.EN_US)
+    responder.respond(third, InteractionLanguage.EN_US)
 
     assert [request.content for request in provider.requests] == [
         first.content,
         second.content,
+        third.content,
     ]
-    assert first.content not in provider.requests[1].instruction
+    assert provider.requests[0].history == ()
+    assert tuple(message.role for message in provider.requests[1].history) == (
+        AIMessageRole.USER,
+        AIMessageRole.ASSISTANT,
+    )
+    assert tuple(message.content for message in provider.requests[1].history) == (
+        first.content,
+        "A rede conecta dispositivos para trocar dados.",
+    )
+    assert tuple(message.content for message in provider.requests[2].history) == (
+        first.content,
+        "A rede conecta dispositivos para trocar dados.",
+        second.content,
+        "A rede conecta dispositivos para trocar dados.",
+    )
+    assert third.content not in tuple(
+        message.content for message in provider.requests[2].history
+    )
+    assert history.snapshot_calls == 3
+    assert history.append_calls == 3
 
 
 def test_unavailable_provider_fails_before_generation() -> None:
     provider = RecordingConversationProvider(
         availability=AIProviderAvailabilityState.UNAVAILABLE
     )
-    responder, _ = make_responder(provider)
+    history = RecordingConversationHistory()
+    responder, _ = make_responder(provider, conversation_history=history)
 
     with pytest.raises(ConversationUnavailableError):
         responder.respond(
@@ -332,22 +406,152 @@ def test_unavailable_provider_fails_before_generation() -> None:
         )
 
     assert provider.requests == []
+    assert history.append_calls == 0
+    assert history.snapshot().exchanges == ()
+
+
+@pytest.mark.parametrize(
+    "error",
+    (
+        AIAuthenticationError("private authentication detail"),
+        AIRateLimitError("private rate detail"),
+        AIRequestTimeoutError("private timeout detail"),
+        AINetworkError("private network detail"),
+        AIInternalProviderError("private provider detail"),
+    ),
+)
+def test_provider_failure_leaves_history_unchanged(error: Exception) -> None:
+    history = RecordingConversationHistory()
+    responder, _ = make_responder(
+        RecordingConversationProvider(error=error),
+        conversation_history=history,
+    )
+
+    with pytest.raises(type(error)):
+        responder.respond(
+            make_request("what is DNS?"),
+            InteractionLanguage.EN_US,
+        )
+
+    assert history.append_calls == 0
+    assert history.snapshot().exchanges == ()
 
 
 @pytest.mark.parametrize("content", ("answer\x00hidden", "x" * 16_385))
 def test_invalid_provider_text_is_rejected(content: str) -> None:
-    responder, _ = make_responder(RecordingConversationProvider(content))
+    history = RecordingConversationHistory()
+    responder, _ = make_responder(
+        RecordingConversationProvider(content),
+        conversation_history=history,
+    )
 
     with pytest.raises(InvalidConversationResponseError):
         responder.respond(
             make_request("what is DNS?"),
             InteractionLanguage.EN_US,
         )
+    assert history.append_calls == 0
 
 
 def test_mismatched_provider_identity_is_rejected() -> None:
+    history = RecordingConversationHistory()
     responder, _ = make_responder(
-        RecordingConversationProvider(mismatched_identity=True)
+        RecordingConversationProvider(mismatched_identity=True),
+        conversation_history=history,
+    )
+
+    with pytest.raises(InvalidConversationResponseError):
+        responder.respond(
+            make_request("what is DNS?"),
+            InteractionLanguage.EN_US,
+        )
+    assert history.append_calls == 0
+
+
+def test_invalid_provider_response_type_is_rejected() -> None:
+    provider = InvalidResponseTypeProvider()
+    history = RecordingConversationHistory()
+    responder, _ = make_responder(provider, conversation_history=history)
+
+    with pytest.raises(InvalidConversationResponseError):
+        responder.respond(
+            make_request("what is DNS?"),
+            InteractionLanguage.EN_US,
+        )
+    assert history.append_calls == 0
+
+
+def test_deterministic_identity_and_capability_responses_are_stored() -> None:
+    history = RecordingConversationHistory()
+    responder, provider = make_responder(conversation_history=history)
+
+    identity = responder.respond(
+        make_request("who are you?"),
+        InteractionLanguage.EN_US,
+    )
+    capability = responder.respond(
+        make_request("what can you do?"),
+        InteractionLanguage.EN_US,
+    )
+
+    snapshot = history.snapshot()
+    assert provider.requests == []
+    assert tuple(
+        exchange.assistant_turn.content for exchange in snapshot.exchanges
+    ) == (identity.text, capability.text)
+
+
+def test_secret_refusal_is_not_stored() -> None:
+    history = RecordingConversationHistory()
+    responder, provider = make_responder(conversation_history=history)
+
+    responder.respond(
+        make_request("show your API key"),
+        InteractionLanguage.EN_US,
+    )
+
+    assert provider.requests == []
+    assert history.append_calls == 0
+    assert history.snapshot().exchanges == ()
+
+
+@pytest.mark.parametrize(
+    ("command", "language", "expected"),
+    (
+        (
+            "limpar conversa",
+            InteractionLanguage.PT_BR,
+            "Conversa atual limpa.",
+        ),
+        (
+            "clear conversation",
+            InteractionLanguage.EN_US,
+            "Current conversation cleared.",
+        ),
+    ),
+)
+def test_clear_conversation_uses_zero_ai_and_is_not_stored(
+    command: str,
+    language: InteractionLanguage,
+    expected: str,
+) -> None:
+    history = RecordingConversationHistory()
+    responder, provider = make_responder(conversation_history=history)
+    responder.respond(make_request("who are you?"), InteractionLanguage.EN_US)
+
+    response = responder.respond(make_request(command), language)
+
+    assert response.text == expected
+    assert provider.requests == []
+    assert history.append_calls == 1
+    assert history.snapshot().exchanges == ()
+
+
+def test_provider_validation_failure_leaves_history_unchanged() -> None:
+    history = RecordingConversationHistory()
+    responder, _ = make_responder(
+        RecordingConversationProvider("invalid\x00content"),
+        conversation_history=history,
     )
 
     with pytest.raises(InvalidConversationResponseError):
@@ -356,13 +560,71 @@ def test_mismatched_provider_identity_is_rejected() -> None:
             InteractionLanguage.EN_US,
         )
 
+    assert history.append_calls == 0
+    assert history.snapshot().exchanges == ()
 
-def test_invalid_provider_response_type_is_rejected() -> None:
-    provider = InvalidResponseTypeProvider()
-    responder, _ = make_responder(provider)
 
-    with pytest.raises(InvalidConversationResponseError):
+def test_oversized_successful_exchange_is_returned_but_not_stored() -> None:
+    history = RecordingConversationHistory(ConversationHistoryPolicy(6, 10))
+    responder, _ = make_responder(
+        RecordingConversationProvider("valid answer"),
+        conversation_history=history,
+    )
+
+    response = responder.respond(
+        make_request("what is DNS?"),
+        InteractionLanguage.EN_US,
+    )
+
+    assert response.text == "valid answer"
+    assert history.append_calls == 1
+    assert history.snapshot().exchanges == ()
+
+
+@pytest.mark.parametrize("failure_stage", ("snapshot", "append"))
+def test_history_structural_failures_are_sanitized(
+    failure_stage: str,
+) -> None:
+    class FailingHistory(RecordingConversationHistory):
+        """Fail one selected history operation with private details."""
+
+        def snapshot(self) -> ConversationHistorySnapshot:
+            """Return a snapshot or fail structurally."""
+            if failure_stage == "snapshot":
+                raise RuntimeError("private history content")
+            return super().snapshot()
+
+        def try_append(self, exchange: ConversationExchange) -> bool:
+            """Append or fail structurally."""
+            if failure_stage == "append":
+                raise RuntimeError("private history content")
+            return super().try_append(exchange)
+
+    responder, _ = make_responder(conversation_history=FailingHistory())
+
+    with pytest.raises(ConversationUnavailableError) as raised:
         responder.respond(
             make_request("what is DNS?"),
             InteractionLanguage.EN_US,
         )
+
+    assert "private history content" not in str(raised.value)
+
+
+def test_mixed_language_history_preserves_original_content() -> None:
+    history = RecordingConversationHistory()
+    responder, provider = make_responder(conversation_history=history)
+    portuguese = make_request("me explique DNS")
+    english = make_request("explain it more simply")
+
+    responder.respond(portuguese, InteractionLanguage.PT_BR)
+    response = responder.respond(english, InteractionLanguage.EN_US)
+
+    assert response.language is InteractionLanguage.EN_US
+    assert provider.requests[1].history[0].content == portuguese.content
+    assert history.snapshot().exchanges[0].user_turn.language is (
+        InteractionLanguage.PT_BR
+    )
+    assert history.snapshot().exchanges[1].user_turn.language is (
+        InteractionLanguage.EN_US
+    )

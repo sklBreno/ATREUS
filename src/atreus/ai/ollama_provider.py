@@ -145,12 +145,20 @@ class OllamaProvider(AIProvider):
         return response
 
     def _request_content(self, request: AIRequest) -> str:
+        messages = [
+            {"role": "system", "content": request.instruction},
+            *(
+                {
+                    "role": message.role.value.casefold(),
+                    "content": message.content,
+                }
+                for message in request.history
+            ),
+            {"role": "user", "content": request.content},
+        ]
         payload: dict[str, object] = {
             "model": self._model_id,
-            "messages": [
-                {"role": "system", "content": request.instruction},
-                {"role": "user", "content": request.content},
-            ],
+            "messages": messages,
             "stream": False,
             "think": False,
             "options": {"num_predict": request.max_output_tokens},

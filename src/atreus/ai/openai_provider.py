@@ -21,6 +21,7 @@ from atreus.ai.exceptions import (
     AIRequestTimeoutError,
 )
 from atreus.ai.models import (
+    AIMessage,
     AIProviderAvailability,
     AIProviderAvailabilityState,
     AIRequest,
@@ -121,10 +122,10 @@ class OpenAIProvider(AIProvider):
         arguments: dict[str, object] = {
             "model": self._model_id,
             "instructions": request.instruction,
-            "input": request.content,
             "max_output_tokens": request.max_output_tokens,
         }
         if request.purpose is AIRequestPurpose.REQUEST_INTERPRETATION:
+            arguments["input"] = request.content
             arguments["text"] = {
                 "format": {
                     "type": "json_schema",
@@ -135,8 +136,19 @@ class OpenAIProvider(AIProvider):
             }
             return arguments
         if request.purpose is AIRequestPurpose.CONVERSATIONAL_RESPONSE:
+            arguments["input"] = [
+                *(self._message_input(message) for message in request.history),
+                {"role": "user", "content": request.content},
+            ]
             return arguments
         raise AIInternalProviderError("AI request purpose is unsupported.")
+
+    @staticmethod
+    def _message_input(message: AIMessage) -> dict[str, str]:
+        return {
+            "role": message.role.value.casefold(),
+            "content": message.content,
+        }
 
     @staticmethod
     def _normalize_error(error: Exception) -> AIProviderException:

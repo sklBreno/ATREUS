@@ -29,7 +29,7 @@ def test_system_layer_has_no_ai_or_openai_dependency() -> None:
     assert "RequestInterpreter" not in system_source
 
 
-def test_conversation_responder_has_no_execution_or_stateful_dependencies() -> None:
+def test_conversation_responder_has_no_operational_or_memory_dependencies() -> None:
     source = (ROOT / "src/atreus/ai/conversation_responder.py").read_text(
         encoding="utf-8"
     )
@@ -44,6 +44,43 @@ def test_conversation_responder_has_no_execution_or_stateful_dependencies() -> N
     assert "context" not in imports.casefold()
     assert "memory" not in imports.casefold()
     assert "openai" not in imports.casefold()
+
+
+def test_conversation_history_is_absent_from_operational_pipeline() -> None:
+    forbidden_paths = (
+        ROOT / "src/atreus/ai/request_interpreter.py",
+        ROOT / "src/atreus/core/core.py",
+        ROOT / "src/atreus/decision/decision_engine.py",
+        ROOT / "src/atreus/planner/planner.py",
+        ROOT / "src/atreus/execution/runtime.py",
+        ROOT / "src/atreus/confirmation/coordinator.py",
+        ROOT / "src/atreus/request_classifier/classifier.py",
+    )
+    forbidden_paths += tuple((ROOT / "src/atreus/system").glob("*.py"))
+
+    for path in forbidden_paths:
+        source = path.read_text(encoding="utf-8")
+        assert "ConversationHistory" not in source
+        assert "atreus.conversation" not in source
+
+
+def test_conversation_history_has_no_external_or_persistent_dependencies() -> None:
+    source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "src/atreus/conversation").glob("*.py")
+    ).casefold()
+
+    for prohibited in (
+        "openai",
+        "ollama",
+        "sqlite",
+        "pathlib",
+        "filesystem",
+        "subprocess",
+        "threading",
+        "asyncio",
+    ):
+        assert prohibited not in source
 
 
 def test_openai_sdk_is_isolated_to_concrete_adapter() -> None:

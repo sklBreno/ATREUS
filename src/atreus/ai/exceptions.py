@@ -54,7 +54,7 @@ class InterpretationTargetUnavailableError(RequestInterpretationException):
 
 
 class ConversationResponseException(Exception):
-    """Base exception for stateless conversational response failures."""
+    """Base exception for bounded conversational response failures."""
 
 
 class InvalidConversationResponseError(ConversationResponseException):
@@ -62,4 +62,4 @@ class InvalidConversationResponseError(ConversationResponseException):
 
 
 class ConversationUnavailableError(ConversationResponseException):
-    """Raised when no AI Provider can answer a general conversation request."""
+    """Raised when a required conversation dependency is unavailable."""

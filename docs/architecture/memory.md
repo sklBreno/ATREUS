@@ -38,9 +38,10 @@ request content, conversation text, plan, capability arguments, complete
 capability results, exceptions, credentials, context snapshots, or log records
 are stored automatically.
 
-Conversational AI V0 is stateless and receives no `MemorySnapshot`. Neither its
-requests nor its responses are written to Working Memory. Conversation history
-and continuity remain separate future architecture.
+Conversational AI V1 receives no `MemorySnapshot`. Neither its requests nor its
+responses are written to Working Memory. Its bounded process-local Conversation
+History is a separate component with dialogue-specific contracts and policy.
+There is no automatic promotion between either memory boundary.
 
 ---
 
@@ -243,8 +244,8 @@ concurrent infrastructure dependencies.
 # Future Evolution
 
 Version 1 may add approved namespace-specific producers, richer typed values,
-bounded queries, explicit conversation continuity, and deterministic memory
-selection policy.
+bounded queries, and deterministic memory selection policy. Conversation
+continuity remains owned by the separate Conversation History component.
 
 Long-Term Memory, Knowledge Memory, Experience Memory, persistence, semantic
 retrieval, embeddings, cross-device synchronization, and promotion policy are

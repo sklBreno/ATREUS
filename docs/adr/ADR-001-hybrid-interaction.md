@@ -124,11 +124,11 @@ AI Provider or a deterministic information capability
 
 AI is used only when it adds value and an approved provider is available.
 
-Conversational AI V0 delegates eligible questions to a stateless
+Conversational AI V1 delegates eligible questions to a bounded
 `ConversationResponder`. Stable self-knowledge is answered deterministically;
-other eligible questions may use one bounded plain-text AI request. The result
-is user-facing text only and never enters Planner, Capability Runtime, or System
-Layer.
+other eligible questions may use one bounded plain-text AI request with complete
+prior conversational exchanges. The result is user-facing text only and never
+enters Planner, Capability Runtime, or System Layer.
 
 Strict structured interpretation remains a separate AI purpose for
 `OPEN_APPLICATION` and `APPLICATION_STATUS` with an already approved
@@ -175,9 +175,15 @@ Deterministic self-knowledge or one bounded AI Provider request
 User-facing text only
 ```
 
-Conversation is stateless in V0. It receives no Context or Working Memory,
-retains no history, has no tools, and cannot execute actions. Operational
-commands and confirmation responses retain precedence.
+Conversation History V1 retains a bounded, process-local sequence of complete
+successful exchanges for the responder only. It receives no Context or Working
+Memory, has no tools or persistence, and cannot execute or authorize actions.
+Request Interpreter and every operational component receive no history.
+Operational commands and confirmation responses retain precedence.
+
+Exact `limpar conversa` and `clear conversation` requests clear only the current
+Conversation History without AI. A new composition or process restart also
+starts with empty history.
 
 ---
 

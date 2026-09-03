@@ -24,6 +24,8 @@ from atreus.configuration.configuration import Configuration
 from atreus.configuration.configuration_manager import ConfigurationManager
 from atreus.confirmation.coordinator import InMemoryConfirmationCoordinator
 from atreus.context.unavailable_context import UnavailableContextProvider
+from atreus.conversation.history import InMemoryConversationHistory
+from atreus.conversation.models import ConversationHistoryPolicy
 from atreus.core.core import Core
 from atreus.decision.decision_engine import DeterministicDecisionEngine
 from atreus.decision.models import DecisionPolicy, UserPolicy
@@ -183,6 +185,13 @@ class Bootstrap:
             self._clock,
             timedelta(seconds=configuration.confirmation_ttl_seconds),
         )
+        conversation_history = InMemoryConversationHistory(
+            self._clock,
+            ConversationHistoryPolicy(
+                max_exchanges=configuration.conversation_history_max_exchanges,
+                max_characters=configuration.conversation_history_max_characters,
+            ),
+        )
         registry = InMemoryCapabilityRegistry(event_bus)
         ai_provider = self._compose_ai_provider(configuration, event_bus)
         capability_runtime = InProcessCapabilityRuntime(
@@ -216,6 +225,8 @@ class Bootstrap:
             ai_provider,
             registry,
             configuration.ai_timeout_seconds,
+            conversation_history,
+            self._clock,
         )
         started_at = self._clock.now()
         core = Core(

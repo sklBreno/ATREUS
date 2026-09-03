@@ -138,13 +138,15 @@ must be deterministic and covered by tests.
 
 AI Provider integration does not change classification. The classifier remains
 entirely local and deterministic. After classification, Decision Engine may ask
-Core to invoke a bounded `RequestInterpreter` or stateless
+Core to invoke a bounded `RequestInterpreter` or bounded
 `ConversationResponder`; neither service alters the `ClassifiedRequest`.
 
-Conversational AI V0 adds narrow deterministic recognition for common
+Conversational AI V1 adds narrow deterministic recognition for common
 Portuguese and English questions, greetings, identity requests, capability
-questions, and internal-secret requests. These rules identify request type
-only. They do not generate responses, select a provider, or route execution.
+questions, internal-secret requests, exact history-clear requests, and selected
+follow-up forms. These rules identify request type only. They do not read
+Conversation History, resolve references, generate responses, select a
+provider, or route execution.
 
 The local classifier also recognizes `abra` and `abre` as narrow Brazilian
 Portuguese command prefixes. Target resolution remains outside the classifier;
@@ -266,4 +268,5 @@ owns routing. This preserves the hybrid interaction decision without allowing
 the classifier to become an orchestrator.
 
 `Conversation` remains a request type. It does not require or imply a dedicated
-conversation module in Version 1.
+conversation orchestration engine in Version 1. Short-term Conversation History
+is a bounded responder dependency, not a classifier dependency.

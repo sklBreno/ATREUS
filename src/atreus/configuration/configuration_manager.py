@@ -55,6 +55,14 @@ class ConfigurationManager(ConfigurationProvider):
                 int,
                 values["working_memory_entry_ttl_seconds"],
             ),
+            conversation_history_max_exchanges=cast(
+                int,
+                values["conversation_history_max_exchanges"],
+            ),
+            conversation_history_max_characters=cast(
+                int,
+                values["conversation_history_max_characters"],
+            ),
             ai_enabled=cast(bool, values["ai_enabled"]),
             ai_provider=cast(str, values["ai_provider"]),
             ai_model=cast(str, values["ai_model"]),

@@ -6,6 +6,13 @@ from atreus.interaction.models import InteractionLanguage
 from atreus.interfaces.interaction_language import InteractionLanguageResolver
 
 _WORD_PATTERN = re.compile(r"[^\W_]+", re.UNICODE)
+_EN_US_EXACT_PHRASES = frozenset(
+    {
+        "explain that better",
+        "go on",
+        "why",
+    }
+)
 _PT_BR_MARKERS = frozenset(
     {
         "abre",
@@ -38,14 +45,19 @@ _EN_US_MARKERS = frozenset(
     {
         "calculations",
         "calculator",
+        "clear",
+        "conversation",
         "are",
         "explain",
+        "go",
+        "it",
         "could",
         "cmd",
         "do",
         "is",
         "notepad",
         "open",
+        "more",
         "powershell",
         "please",
         "prompt",
@@ -53,9 +65,12 @@ _EN_US_MARKERS = frozenset(
         "run",
         "running",
         "show",
+        "simply",
         "some",
         "system",
+        "tell",
         "what",
+        "why",
         "who",
         "want",
         "write",
@@ -78,6 +93,10 @@ class DeterministicInteractionLanguageResolver(InteractionLanguageResolver):
             English for clear English-only evidence, otherwise Brazilian
             Portuguese.
         """
+        normalized = " ".join(content.casefold().split()).strip(" .!?")
+        if normalized in _EN_US_EXACT_PHRASES:
+            return InteractionLanguage.EN_US
+
         words = tuple(_WORD_PATTERN.findall(content.casefold()))
         portuguese_count = sum(word in _PT_BR_MARKERS for word in words)
         english_count = sum(word in _EN_US_MARKERS for word in words)

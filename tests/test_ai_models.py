@@ -13,6 +13,8 @@ from atreus.ai.exceptions import (
     InvalidRequestInterpretationError,
 )
 from atreus.ai.models import (
+    AIMessage,
+    AIMessageRole,
     AIRequest,
     AIRequestPurpose,
     AIResponse,
@@ -36,6 +38,93 @@ def make_ai_request() -> AIRequest:
     )
 
 
+def test_ai_message_is_immutable_slotted_and_hides_content() -> None:
+    message = AIMessage(AIMessageRole.USER, "private history content")
+
+    with pytest.raises(FrozenInstanceError):
+        message.content = "changed"  # type: ignore[misc]
+
+    assert hasattr(message, "__slots__")
+    assert "private history content" not in repr(message)
+
+
+@pytest.mark.parametrize(
+    ("role", "content"),
+    (("USER", "content"), (AIMessageRole.USER, " "), (AIMessageRole.USER, "x\x00")),
+)
+def test_ai_message_rejects_invalid_values(role: object, content: str) -> None:
+    with pytest.raises(InvalidAIRequestError):
+        AIMessage(role, content)  # type: ignore[arg-type]
+
+
+def test_ai_request_accepts_only_complete_conversation_history() -> None:
+    history = (
+        AIMessage(AIMessageRole.USER, "What is RAM?"),
+        AIMessage(AIMessageRole.ASSISTANT, "RAM is working storage."),
+    )
+
+    request = AIRequest(
+        uuid4(),
+        uuid4(),
+        AIRequestPurpose.CONVERSATIONAL_RESPONSE,
+        "Answer safely.",
+        "Explain it more simply.",
+        10,
+        history=history,
+    )
+
+    assert request.history is history
+    assert "What is RAM?" not in repr(request)
+    assert "RAM is working storage." not in repr(request)
+
+
+@pytest.mark.parametrize(
+    "history",
+    (
+        (AIMessage(AIMessageRole.USER, "orphan"),),
+        (
+            AIMessage(AIMessageRole.ASSISTANT, "wrong"),
+            AIMessage(AIMessageRole.USER, "order"),
+        ),
+        (
+            AIMessage(AIMessageRole.USER, "first"),
+            AIMessage(AIMessageRole.USER, "second"),
+        ),
+    ),
+)
+def test_ai_request_rejects_incomplete_or_misordered_history(
+    history: tuple[AIMessage, ...],
+) -> None:
+    with pytest.raises(InvalidAIRequestError):
+        AIRequest(
+            uuid4(),
+            uuid4(),
+            AIRequestPurpose.CONVERSATIONAL_RESPONSE,
+            "instruction",
+            "content",
+            10,
+            history=history,
+        )
+
+
+def test_request_interpretation_rejects_conversation_history() -> None:
+    history = (
+        AIMessage(AIMessageRole.USER, "prior"),
+        AIMessage(AIMessageRole.ASSISTANT, "response"),
+    )
+
+    with pytest.raises(InvalidAIRequestError):
+        AIRequest(
+            uuid4(),
+            uuid4(),
+            AIRequestPurpose.REQUEST_INTERPRETATION,
+            "instruction",
+            "content",
+            10,
+            history=history,
+        )
+
+
 def test_ai_request_is_immutable_and_hides_private_content_from_repr() -> None:
     request = make_ai_request()
 
@@ -46,6 +135,7 @@ def test_ai_request_is_immutable_and_hides_private_content_from_repr() -> None:
     assert "Please open calculator" not in representation
     assert "Return structured interpretation" not in representation
     assert hasattr(request, "__slots__")
+    assert request.history == ()
 
 
 @pytest.mark.parametrize("timeout", [0, -1, nan, inf, True])

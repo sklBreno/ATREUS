@@ -14,6 +14,11 @@ from atreus.bootstrap.bootstrap import Bootstrap
 from atreus.configuration.configuration import Configuration
 from atreus.configuration.configuration_manager import ConfigurationManager
 from atreus.configuration.loader import ConfigurationLoader
+from atreus.conversation.history import InMemoryConversationHistory
+from atreus.conversation.models import (
+    ConversationHistoryPolicy,
+    ConversationHistorySnapshot,
+)
 from atreus.decision.models import DecisionOutcome
 from atreus.execution.models import CapabilityExecutionStatus
 from atreus.interfaces.ai_provider import AIProvider
@@ -374,3 +379,104 @@ def test_bootstrap_openai_selection_still_uses_process_credential(
     assert len(provider.requests) == 1
     assert captured["api_key"] == "private-test-key"
     assert captured["model_id"] == "test-model"
+
+
+def test_bootstrap_keeps_one_conversation_history_per_composition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class RecordingHistory(InMemoryConversationHistory):
+        """Record snapshots from one composed conversation history."""
+
+        def __init__(
+            self,
+            clock: Clock,
+            policy: ConversationHistoryPolicy,
+        ) -> None:
+            """Initialize one recording history."""
+            super().__init__(clock, policy)
+            self.snapshots: list[ConversationHistorySnapshot] = []
+
+        def snapshot(self) -> ConversationHistorySnapshot:
+            """Record and return the current history snapshot."""
+            snapshot = super().snapshot()
+            self.snapshots.append(snapshot)
+            return snapshot
+
+    histories: list[RecordingHistory] = []
+    policies: list[ConversationHistoryPolicy] = []
+
+    def create_history(
+        clock: Clock,
+        policy: ConversationHistoryPolicy,
+    ) -> RecordingHistory:
+        history = RecordingHistory(clock, policy)
+        histories.append(history)
+        policies.append(policy)
+        return history
+
+    provider = BootstrapAIProvider()
+    monkeypatch.setattr(
+        "atreus.bootstrap.bootstrap.InMemoryConversationHistory",
+        create_history,
+    )
+    bootstrap = Bootstrap(
+        configuration_provider=make_ai_configuration_manager(enabled=True),
+        application_launcher=RecordingApplicationLauncher(),
+        application_state_reader=RecordingApplicationStateReader(),
+        ai_provider=provider,
+        clock=FixedClock(),
+        log_writer=RecordingLogWriter(),
+    )
+
+    first_runtime = bootstrap.compose()
+    first_runtime.submit("what is DNS?")
+    first_runtime.submit("why?")
+
+    assert policies[0] == ConversationHistoryPolicy(6, 12_000)
+    assert provider.requests[0].history == ()
+    assert len(provider.requests[1].history) == 2
+    assert len(histories[0].snapshots) == 2
+
+    second_runtime = bootstrap.compose()
+    second_runtime.submit("why?")
+
+    assert len(histories) == 2
+    assert histories[1] is not histories[0]
+    assert provider.requests[2].history == ()
+
+
+def test_clear_conversation_does_not_clear_working_memory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stores: list[InMemoryWorkingMemory] = []
+
+    def create_store(
+        clock: Clock,
+        policy: WorkingMemoryPolicy,
+    ) -> InMemoryWorkingMemory:
+        store = InMemoryWorkingMemory(clock, policy)
+        stores.append(store)
+        return store
+
+    monkeypatch.setattr(
+        "atreus.bootstrap.bootstrap.InMemoryWorkingMemory",
+        create_store,
+    )
+    runtime = Bootstrap(
+        configuration_provider=make_ai_configuration_manager(enabled=True),
+        application_launcher=RecordingApplicationLauncher(),
+        application_state_reader=RecordingApplicationStateReader(),
+        ai_provider=BootstrapAIProvider(),
+        clock=FixedClock(),
+        log_writer=RecordingLogWriter(),
+    ).compose()
+    remembered = stores[0].remember(
+        "tests.fact",
+        (MemoryValue("status", "retained"),),
+        "tests",
+    )
+
+    runtime.submit("what is DNS?")
+    runtime.submit("clear conversation")
+
+    assert stores[0].recall(remembered.entry_id) is remembered

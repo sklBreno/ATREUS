@@ -23,6 +23,8 @@ from atreus.ai.exceptions import (
     AIRequestTimeoutError,
 )
 from atreus.ai.models import (
+    AIMessage,
+    AIMessageRole,
     AIRequest,
     AIRequestCompleted,
     AIRequestFailed,
@@ -97,6 +99,13 @@ def make_conversation_request() -> AIRequest:
         "What is RAM?",
         12,
         512,
+        (
+            AIMessage(AIMessageRole.USER, "What is storage?"),
+            AIMessage(
+                AIMessageRole.ASSISTANT,
+                "Storage retains data beyond active work.",
+            ),
+        ),
     )
 
 
@@ -125,6 +134,7 @@ def test_openai_adapter_uses_strict_schema_without_tools() -> None:
     assert client.timeout == 12
     assert client.create_arguments is not None
     assert client.create_arguments["model"] == "test-model"
+    assert client.create_arguments["input"] == request.content
     assert client.create_arguments["max_output_tokens"] == 128
     assert "tools" not in client.create_arguments
     text = cast(dict[str, object], client.create_arguments["text"])
@@ -149,6 +159,7 @@ def test_openai_adapter_uses_strict_schema_without_tools() -> None:
     assert "pid" not in properties
     assert "path" not in properties
     assert "command" not in properties
+    assert request.history == ()
 
 
 def test_openai_adapter_uses_plain_text_without_tools_for_conversation() -> None:
@@ -160,6 +171,14 @@ def test_openai_adapter_uses_plain_text_without_tools_for_conversation() -> None
     assert response.content == "RAM is short-term working storage."
     assert client.create_arguments is not None
     assert client.create_arguments["max_output_tokens"] == 512
+    assert client.create_arguments["input"] == [
+        {"role": "user", "content": "What is storage?"},
+        {
+            "role": "assistant",
+            "content": "Storage retains data beyond active work.",
+        },
+        {"role": "user", "content": request.content},
+    ]
     assert "text" not in client.create_arguments
     assert "tools" not in client.create_arguments
     assert "tool_choice" not in client.create_arguments

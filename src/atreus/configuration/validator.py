@@ -17,6 +17,8 @@ _EXPECTED_TYPES: dict[
     "log_level": str,
     "working_memory_capacity": int,
     "working_memory_entry_ttl_seconds": int,
+    "conversation_history_max_exchanges": int,
+    "conversation_history_max_characters": int,
     "ai_enabled": bool,
     "ai_provider": str,
     "ai_model": str,
@@ -110,6 +112,8 @@ class ConfigurationValidator:
         for field_name in (
             "working_memory_capacity",
             "working_memory_entry_ttl_seconds",
+            "conversation_history_max_exchanges",
+            "conversation_history_max_characters",
             "ai_timeout_seconds",
             "confirmation_ttl_seconds",
         ):
