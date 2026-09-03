@@ -17,6 +17,8 @@ def test_configuration_uses_platform_defaults() -> None:
     assert configuration.log_level == "INFO"
     assert configuration.working_memory_capacity == 64
     assert configuration.working_memory_entry_ttl_seconds == 1800
+    assert configuration.conversation_history_max_exchanges == 6
+    assert configuration.conversation_history_max_characters == 12000
     assert configuration.ai_enabled is False
     assert configuration.ai_provider == "openai"
     assert configuration.ai_model == ""

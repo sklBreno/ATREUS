@@ -64,11 +64,17 @@ AI Provider is not responsible for:
 - `content`: Input content for the operation.
 - `timeout_seconds`: Positive execution deadline.
 - `max_output_tokens`: Positive purpose-specific output bound.
+- `history`: Immutable provider-neutral prior conversational messages.
 
-AI Provider V0 defines `REQUEST_INTERPRETATION` and
+AI Provider V1 defines `REQUEST_INTERPRETATION` and
 `CONVERSATIONAL_RESPONSE`. `instruction` and `content` are excluded from
 representations. Context and Working Memory are not part of `AIRequest` and are
-not disclosed to the provider in V0.
+not disclosed to the provider.
+
+`history` contains only `AIMessage` values with `USER` or `ASSISTANT` roles.
+Request interpretation requires an empty history. Conversational history must
+begin with `USER`, alternate roles, and end with `ASSISTANT`, preserving only
+complete prior exchanges. The current request remains exclusively in `content`.
 
 Provider-specific fields such as model names, deployment identifiers, sampling
 parameters, SDK objects, or API request classes are not part of the public
@@ -161,9 +167,9 @@ required, and Planner; it is never reconstructed from raw text.
 
 ---
 
-# Conversation Responder V0
+# Conversation Responder V1
 
-`ConversationResponder` is the stateless service used by Core after Decision
+`ConversationResponder` is the bounded service used by Core after Decision
 Engine returns `DELEGATE(ai.conversation_responder)`. It answers stable identity,
 capability, unsupported-capability, and secret-disclosure requests locally. For
 other eligible questions and conversation, it invokes `AIProvider` at most once
@@ -180,8 +186,11 @@ access. Its result is user-facing text only. It cannot execute an action, create
 a plan, grant permission, or claim that an action ran.
 
 Context and Working Memory are not supplied to the responder or provider.
-Version 0 retains no conversation history. See
-`docs/architecture/conversational-ai.md`.
+Conversation History is a separate process-local component available only to
+the responder. It projects bounded complete prior exchanges into `AIRequest`
+and never reaches request interpretation or the operational pipeline. See
+`docs/architecture/conversational-ai.md` and
+`docs/architecture/conversation-history.md`.
 
 ---
 
@@ -216,9 +225,12 @@ command field. The interpreter validates the decoded response again because
 provider output remains untrusted and may name a locally unsupported
 intent-target combination.
 
-For `CONVERSATIONAL_RESPONSE`, each adapter requests bounded plain text and does
-not supply the interpretation schema. Purpose dispatch remains internal to the
-adapter; provider SDK or transport types do not cross the public contract.
+For `CONVERSATIONAL_RESPONSE`, each adapter sends the system instruction,
+bounded prior `USER` and `ASSISTANT` messages, then the current user content.
+The current request is not duplicated in history. Each adapter requests bounded
+plain text and does not supply the interpretation schema. Purpose dispatch
+remains internal to the adapter; provider SDK or transport types do not cross
+the public contract.
 
 No tools, web search, file search, MCP integration, shell, or executable
 function is supplied to the model. Automatic SDK retries are disabled in V0.
@@ -246,6 +258,11 @@ both current purposes: plain-text conversation and strict structured request
 interpretation. Ollama availability is configuration-level in V0; connection,
 timeout, server, malformed-response, and missing-model failures are normalized
 during generation.
+
+For conversation, bounded history remains on the configured local Ollama
+endpoint. When OpenAI is selected, the same bounded history is disclosed to the
+cloud provider for that conversation request. Neither adapter owns or persists
+ATREUS conversation state.
 
 Ollama requires no API key. Selection is static for one runtime composition,
 with no automatic fallback to OpenAI and no AI Router.

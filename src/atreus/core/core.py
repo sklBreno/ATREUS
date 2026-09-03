@@ -94,7 +94,7 @@ class Core:
             confirmation_coordinator: Single-use interactive authorization state.
             interaction_language_resolver: Deterministic prompt language boundary.
             request_interpreter: Optional bounded AI interpretation boundary.
-            conversation_responder: Optional stateless text response boundary.
+            conversation_responder: Optional bounded text response boundary.
         """
         self._event_bus = event_bus
         self._request_classifier = request_classifier

@@ -264,6 +264,7 @@ policy objects for:
 
 - Context transition stabilization.
 - Working Memory capacity and expiration behavior.
+- Conversation History exchange and character limits.
 - Planning bounds.
 - Capability execution timeout defaults.
 
@@ -271,6 +272,16 @@ Working Memory V0 defines validated defaults of 64 entries and 1800 seconds per
 entry. `ATREUS_WORKING_MEMORY_CAPACITY` and
 `ATREUS_WORKING_MEMORY_ENTRY_TTL_SECONDS` may override those defaults through
 the existing source priority. Both values must be positive integers.
+
+Short-Term Conversation History V1 defines validated defaults of six complete
+exchanges and 12,000 retained characters. The environment names are
+`ATREUS_CONVERSATION_HISTORY_MAX_EXCHANGES` and
+`ATREUS_CONVERSATION_HISTORY_MAX_CHARACTERS`. Both values must be positive
+integers and follow the existing process environment over `.env` over defaults
+priority.
+
+Conversation History has no TTL or dynamic reload in Version 1. Bootstrap uses
+the validated values to compose one process-local immutable policy.
 
 Other numeric defaults remain owned by their future implementation
 configuration, validated before use, and injected into the responsible module.
@@ -412,6 +423,8 @@ The module must be tested to ensure:
   architecture values.
 - Correct Working Memory defaults, positive-value validation, and source
   priority for capacity and entry TTL.
+- Correct Conversation History defaults, positive-value validation, and source
+  priority for exchange and character limits.
 - Correct AI-disabled default, explicit provider selection, provider-specific
   model requirements, local Ollama URL validation, timeout validation, and
   source priority for non-secret AI settings.

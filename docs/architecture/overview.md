@@ -50,8 +50,9 @@ Request Classifier ──classification──> Core
 
 Working Memory provides bounded process-local snapshots where explicitly
 required.
-Conversation Responder provides bounded stateless text through AI Provider and
-never enters Planner, Capability Runtime, or System Layer.
+Conversation Responder provides bounded text through AI Provider and owns access
+to a separate process-local Conversation History. Neither boundary enters
+Planner, Capability Runtime, or System Layer.
 Configuration provides validated settings during bootstrap.
 Domain modules publish immutable facts through the Event Bus.
 ```
@@ -164,6 +165,11 @@ Decision Engine and Planner inputs. Capability Runtime does not know about
 Memory. Version 0 has no automatic producers, persistence, Long-Term Memory,
 Knowledge Memory, Experience Memory, conversation history, or learning.
 
+Short-Term Conversation History V1 is a separate bounded process-local store of
+complete successful dialogue exchanges. It is available only to Conversation
+Responder and is never projected into Working Memory or the operational
+pipeline.
+
 ---
 
 ## Capability Registry
@@ -222,7 +228,7 @@ switching, automatic provider fallback, or AI Router.
 
 AI Provider is used through `RequestInterpreter` for strict structured
 interpretation of approved `OPEN_APPLICATION` and `APPLICATION_STATUS` intents,
-and through `ConversationResponder` for bounded stateless text. Deterministic
+and through `ConversationResponder` for bounded contextual text. Deterministic
 application-open commands remain local and make no AI request. Provider output
 is untrusted and returns to local validation before a typed `ApplicationAction`
 reaches Decision Engine. Conversational output is non-executable and goes only
@@ -231,11 +237,12 @@ capability.
 
 ## Conversational AI
 
-Conversational AI V0 answers eligible questions and conversation in Brazilian
+Conversational AI V1 answers eligible questions and conversation in Brazilian
 Portuguese or English. Stable identity, capability, unsupported-capability, and
 secret-refusal responses are deterministic. General responses use one bounded
-AI request with no tools, Context, Working Memory, conversation history, web,
-filesystem, or execution access.
+AI request with complete prior conversational exchanges, no tools, Context,
+Working Memory, web, filesystem, or execution access. Exact bilingual clear
+requests remove only the current process-local Conversation History.
 
 ## Interactive Confirmation
 
@@ -355,6 +362,7 @@ Decision Engine
     │                                ├── ASK_FOR_CONFIRMATION for OPEN
     │                                └── REQUEST_PLANNING for STATUS
     ├── DELEGATE ──────────────> Conversation Responder
+    │                                │ bounded Conversation History
     │                                │ local self-knowledge or one bounded
     │                                │ plain-text AI request
     │                                ▼
@@ -392,6 +400,7 @@ Event ownership follows the state owner:
 - Decision Engine owns `DecisionMade`.
 - Planner owns `PlanCreated`.
 - Working Memory V0 publishes no events.
+- Conversation History V1 publishes no events.
 - Capability Registry owns catalog and availability events.
 - Capability Runtime owns capability execution events.
 - AI Provider owns AI request and availability events.
@@ -414,7 +423,7 @@ Dependencies point toward abstractions and remain acyclic:
 - Request Interpreter depends on AI Provider and the read-only Capability
   Catalog.
 - Conversation Responder depends on AI Provider and the read-only Capability
-  Catalog.
+  Catalog, plus its private Conversation History boundary.
 - Capability implementations may depend on narrow System Layer or AI Provider
   interfaces.
 - Domain modules do not depend on Core.
@@ -425,8 +434,10 @@ Dependencies point toward abstractions and remain acyclic:
 # Numeric Policies
 
 Working Memory V0 uses configurable defaults of 64 entries and 1800 seconds per
-entry. Context stabilization, planning limits, and execution timeouts continue
-to use validated configurable policies when implemented.
+entry. Conversation History V1 uses configurable defaults of six complete
+exchanges and 12,000 characters. Context stabilization, planning limits, and
+execution timeouts continue to use validated configurable policies when
+implemented.
 
 Modules must not hardcode values that belong to validated configuration policy.
 

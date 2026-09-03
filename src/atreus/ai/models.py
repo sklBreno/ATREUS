@@ -41,6 +41,35 @@ class AIRequestPurpose(StrEnum):
     CONVERSATIONAL_RESPONSE = "CONVERSATIONAL_RESPONSE"
 
 
+class AIMessageRole(StrEnum):
+    """Identify one provider-neutral conversational message role."""
+
+    USER = "USER"
+    ASSISTANT = "ASSISTANT"
+
+
+@dataclass(frozen=True, slots=True)
+class AIMessage:
+    """Represent one validated provider-neutral conversation message."""
+
+    role: AIMessageRole
+    content: str = field(repr=False)
+
+    def __post_init__(self) -> None:
+        """Validate role and private textual content."""
+        if not isinstance(self.role, AIMessageRole):
+            raise InvalidAIRequestError("AI message role is invalid.")
+        if not isinstance(self.content, str) or not self.content.strip():
+            raise InvalidAIRequestError("AI message content must be non-empty.")
+        if any(
+            ord(character) < 32 and character not in "\n\t"
+            for character in self.content
+        ):
+            raise InvalidAIRequestError(
+                "AI message content contains invalid control characters."
+            )
+
+
 @dataclass(frozen=True, slots=True)
 class AIRequest:
     """Represent one bounded provider-neutral AI request."""
@@ -52,6 +81,7 @@ class AIRequest:
     content: str = field(repr=False)
     timeout_seconds: float
     max_output_tokens: int = 128
+    history: tuple[AIMessage, ...] = ()
 
     def __post_init__(self) -> None:
         """Validate the bounded provider request contract."""
@@ -78,6 +108,35 @@ class AIRequest:
             raise InvalidAIRequestError(
                 "AI request max_output_tokens must be a positive integer."
             )
+        if not isinstance(self.history, tuple) or any(
+            not isinstance(message, AIMessage) for message in self.history
+        ):
+            raise InvalidAIRequestError(
+                "AI request history must be an immutable tuple of AIMessage."
+            )
+        if (
+            self.purpose is AIRequestPurpose.REQUEST_INTERPRETATION
+            and self.history
+        ):
+            raise InvalidAIRequestError(
+                "Request interpretation cannot receive conversation history."
+            )
+        if self.purpose is AIRequestPurpose.CONVERSATIONAL_RESPONSE:
+            self._validate_conversation_history()
+
+    def _validate_conversation_history(self) -> None:
+        if len(self.history) % 2 != 0:
+            raise InvalidAIRequestError(
+                "Conversation history must contain complete message pairs."
+            )
+        for index, message in enumerate(self.history):
+            expected_role = (
+                AIMessageRole.USER if index % 2 == 0 else AIMessageRole.ASSISTANT
+            )
+            if message.role is not expected_role:
+                raise InvalidAIRequestError(
+                    "Conversation history must alternate user and assistant messages."
+                )
 
 
 @dataclass(frozen=True, slots=True)

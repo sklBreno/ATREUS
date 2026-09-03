@@ -19,6 +19,8 @@ from atreus.ai.exceptions import (
     AIRequestTimeoutError,
 )
 from atreus.ai.models import (
+    AIMessage,
+    AIMessageRole,
     AIRequest,
     AIRequestCompleted,
     AIRequestFailed,
@@ -117,6 +119,17 @@ def make_request(
         "What is RAM?",
         12,
         256,
+        (
+            (
+                AIMessage(AIMessageRole.USER, "What is storage?"),
+                AIMessage(
+                    AIMessageRole.ASSISTANT,
+                    "Storage retains data beyond active work.",
+                ),
+            )
+            if purpose is AIRequestPurpose.CONVERSATIONAL_RESPONSE
+            else ()
+        ),
     )
 
 
@@ -163,6 +176,11 @@ def test_ollama_conversation_uses_fixed_local_chat_endpoint() -> None:
     assert payload["options"] == {"num_predict": 256}
     assert payload["messages"] == [
         {"role": "system", "content": request.instruction},
+        {"role": "user", "content": "What is storage?"},
+        {
+            "role": "assistant",
+            "content": "Storage retains data beyond active work.",
+        },
         {"role": "user", "content": request.content},
     ]
     assert "format" not in payload
@@ -181,6 +199,7 @@ def test_ollama_interpretation_uses_strict_schema_and_local_validation() -> None
     response = make_provider(opener).generate(request)
 
     assert json.loads(response.content) == json.loads(content)
+    assert request.history == ()
     payload = request_payload(opener)
     schema = cast(dict[str, object], payload["format"])
     assert schema["additionalProperties"] is False

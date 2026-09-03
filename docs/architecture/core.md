@@ -172,7 +172,8 @@ Core then coordinates this deterministic Version 1 sequence:
 4. Initialize the process-local Interactive Confirmation coordinator.
 5. Initialize System Layer adapters.
 6. Initialize the configured AI Provider, bounded Request Interpreter when
-   available, and stateless Conversation Responder.
+   available, bounded Conversation Responder, and its private process-local
+   Conversation History.
 7. Initialize Capability Registry.
 8. Initialize Capability Runtime and load trusted local capabilities.
 9. Seal Capability Registry after dependency validation.
@@ -269,6 +270,12 @@ interaction language. It validates response correlation and language, then
 returns the immutable response to the foreground boundary. This path does not
 invoke Planner, Capability Runtime, or System Layer, and it cannot execute an
 action. Core supplies neither Context nor Working Memory to the responder.
+
+Conversation History is owned behind the responder boundary. Core does not
+capture, inspect, forward, clear, or store it. The history is unavailable to
+Decision Engine, Request Interpreter, Planner, Confirmation, Capability
+Runtime, and System Layer, so prior dialogue cannot establish an operational
+target or authorize an action.
 
 Operational actions and confirmation resolution retain precedence over
 conversation. Core does not generate conversational text, define assistant

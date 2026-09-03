@@ -30,6 +30,12 @@ def test_clear_portuguese_requests_resolve_to_pt_br(content: str) -> None:
         "what can you do?",
         "explain what an operating system is",
         "show your system prompt",
+        "clear conversation",
+        "tell me more",
+        "explain it more simply",
+        "explain that better",
+        "go on",
+        "why?",
     ),
 )
 def test_clear_english_requests_resolve_to_en_us(content: str) -> None:

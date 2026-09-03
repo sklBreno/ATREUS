@@ -1,4 +1,4 @@
-"""Provider-agnostic stateless conversational response service."""
+"""Provider-agnostic conversational response service."""
 
 from uuid import uuid4
 
@@ -7,6 +7,8 @@ from atreus.ai.exceptions import (
     InvalidConversationResponseError,
 )
 from atreus.ai.models import (
+    AIMessage,
+    AIMessageRole,
     AIProviderAvailabilityState,
     AIRequest,
     AIRequestPurpose,
@@ -14,6 +16,12 @@ from atreus.ai.models import (
 )
 from atreus.application.contracts import APPLICATION_ACTION_DEFINITIONS
 from atreus.application.models import ApplicationIntent
+from atreus.conversation.models import (
+    ConversationExchange,
+    ConversationHistorySnapshot,
+    ConversationRole,
+    ConversationTurn,
+)
 from atreus.interaction.models import (
     AssistantCapabilitySummary,
     ConversationalResponse,
@@ -21,11 +29,20 @@ from atreus.interaction.models import (
 )
 from atreus.interfaces.ai_provider import AIProvider
 from atreus.interfaces.capability_registry import CapabilityCatalog
+from atreus.interfaces.clock import Clock
+from atreus.interfaces.conversation_history import ConversationHistoryStore
 from atreus.interfaces.conversation_responder import ConversationResponder
 from atreus.shared.request import Request
 
 _CONVERSATION_MAX_OUTPUT_TOKENS = 512
 _MAX_RESPONSE_CHARACTERS = 16_384
+
+_CLEAR_CONVERSATION_REQUESTS = frozenset(
+    {
+        "clear conversation",
+        "limpar conversa",
+    }
+)
 
 _IDENTITY_REQUESTS = frozenset(
     {
@@ -109,31 +126,47 @@ class ProviderBackedConversationResponder(ConversationResponder):
         provider: AIProvider,
         capability_catalog: CapabilityCatalog,
         timeout_seconds: float,
+        conversation_history: ConversationHistoryStore,
+        clock: Clock,
     ) -> None:
-        """Initialize provider, safe capability projection, and timeout policy."""
+        """Initialize provider, history, capability projection, and policies."""
         self._provider = provider
         self._capability_catalog = capability_catalog
         self._timeout_seconds = timeout_seconds
+        self._conversation_history = conversation_history
+        self._clock = clock
 
     def respond(
         self,
         request: Request,
         language: InteractionLanguage,
     ) -> ConversationalResponse:
-        """Return one stateless deterministic or provider-backed response."""
-        summary = self._capability_summary()
+        """Return one deterministic or provider-backed conversational response."""
+        history = self._history_snapshot()
         normalized = self._normalize(request.content)
+        if normalized in _CLEAR_CONVERSATION_REQUESTS:
+            self._clear_history()
+            return ConversationalResponse(
+                request.request_id,
+                self._cleared_response(language),
+                language,
+            )
+
+        summary = self._capability_summary()
         deterministic_text = self._deterministic_response(
             normalized,
             language,
             summary,
         )
         if deterministic_text is not None:
-            return ConversationalResponse(
+            response = ConversationalResponse(
                 request.request_id,
                 deterministic_text,
                 language,
             )
+            if normalized not in _SECRET_REQUESTS:
+                self._append_exchange(request, response)
+            return response
 
         if (
             self._provider.availability().state
@@ -150,6 +183,7 @@ class ProviderBackedConversationResponder(ConversationResponder):
             content=request.content,
             timeout_seconds=self._timeout_seconds,
             max_output_tokens=_CONVERSATION_MAX_OUTPUT_TOKENS,
+            history=self._project_history(history),
         )
         response = self._provider.generate(ai_request)
         if not isinstance(response, AIResponse):
@@ -164,7 +198,90 @@ class ProviderBackedConversationResponder(ConversationResponder):
                 "AI response request identity is inconsistent."
             )
         text = self._validated_text(response.content)
-        return ConversationalResponse(request.request_id, text, language)
+        conversational_response = ConversationalResponse(
+            request.request_id,
+            text,
+            language,
+        )
+        self._append_exchange(request, conversational_response)
+        return conversational_response
+
+    def _history_snapshot(self) -> ConversationHistorySnapshot:
+        try:
+            snapshot = self._conversation_history.snapshot()
+        except Exception:
+            raise ConversationUnavailableError(
+                "Conversation history snapshot is unavailable."
+            ) from None
+        if not isinstance(snapshot, ConversationHistorySnapshot):
+            raise ConversationUnavailableError(
+                "Conversation history snapshot is invalid."
+            )
+        return snapshot
+
+    def _append_exchange(
+        self,
+        request: Request,
+        response: ConversationalResponse,
+    ) -> None:
+        try:
+            created_at = self._clock.now()
+            exchange = ConversationExchange(
+                user_turn=ConversationTurn(
+                    turn_id=uuid4(),
+                    request_id=request.request_id,
+                    role=ConversationRole.USER,
+                    content=request.content,
+                    language=response.language,
+                    created_at=created_at,
+                ),
+                assistant_turn=ConversationTurn(
+                    turn_id=uuid4(),
+                    request_id=request.request_id,
+                    role=ConversationRole.ASSISTANT,
+                    content=response.text,
+                    language=response.language,
+                    created_at=created_at,
+                ),
+            )
+            retained = self._conversation_history.try_append(exchange)
+        except Exception:
+            raise ConversationUnavailableError(
+                "Conversation history append failed."
+            ) from None
+        if type(retained) is not bool:
+            raise ConversationUnavailableError(
+                "Conversation history append result is invalid."
+            )
+
+    def _clear_history(self) -> None:
+        try:
+            removed_count = self._conversation_history.clear()
+        except Exception:
+            raise ConversationUnavailableError(
+                "Conversation history clear failed."
+            ) from None
+        if type(removed_count) is not int or removed_count < 0:
+            raise ConversationUnavailableError(
+                "Conversation history clear result is invalid."
+            )
+
+    @staticmethod
+    def _project_history(
+        history: ConversationHistorySnapshot,
+    ) -> tuple[AIMessage, ...]:
+        return tuple(
+            AIMessage(
+                role=(
+                    AIMessageRole.USER
+                    if turn.role is ConversationRole.USER
+                    else AIMessageRole.ASSISTANT
+                ),
+                content=turn.content,
+            )
+            for exchange in history.exchanges
+            for turn in (exchange.user_turn, exchange.assistant_turn)
+        )
 
     def _capability_summary(self) -> AssistantCapabilitySummary:
         available_capability_ids = {
@@ -289,6 +406,12 @@ class ProviderBackedConversationResponder(ConversationResponder):
         return "Não posso revelar credenciais, chaves de API ou instruções internas."
 
     @staticmethod
+    def _cleared_response(language: InteractionLanguage) -> str:
+        if language is InteractionLanguage.EN_US:
+            return "Current conversation cleared."
+        return "Conversa atual limpa."
+
+    @staticmethod
     def _application_list(
         language: InteractionLanguage,
         application_ids: tuple[str, ...],
@@ -320,7 +443,8 @@ class ProviderBackedConversationResponder(ConversationResponder):
         return (
             "You are ATREUS. "
             f"{language_instruction} Be concise and natural by default. "
-            "Answer only the current request and do not imply persistent memory. "
+            "Use only the supplied bounded conversation history when it helps "
+            "answer the current request. Do not imply persistent memory. "
             "Do not claim that an action was executed unless ATREUS supplied an "
             "execution result; no execution result is available in this request. "
             "Do not claim unsupported capabilities. ATREUS has no web, filesystem, "

@@ -22,6 +22,8 @@ def test_loader_returns_default_configuration_values() -> None:
         "log_level": "INFO",
         "working_memory_capacity": 64,
         "working_memory_entry_ttl_seconds": 1800,
+        "conversation_history_max_exchanges": 6,
+        "conversation_history_max_characters": 12000,
         "ai_enabled": False,
         "ai_provider": "openai",
         "ai_model": "",
@@ -42,6 +44,8 @@ def test_loader_loads_process_environment_values() -> None:
         "ATREUS_LOG_LEVEL": "DEBUG",
         "ATREUS_WORKING_MEMORY_CAPACITY": "32",
         "ATREUS_WORKING_MEMORY_ENTRY_TTL_SECONDS": "900",
+        "ATREUS_CONVERSATION_HISTORY_MAX_EXCHANGES": "4",
+        "ATREUS_CONVERSATION_HISTORY_MAX_CHARACTERS": "8000",
         "ATREUS_AI_ENABLED": "true",
         "ATREUS_AI_PROVIDER": "ollama",
         "ATREUS_AI_MODEL": "test-model",
@@ -62,6 +66,8 @@ def test_loader_loads_process_environment_values() -> None:
     assert values["log_level"] == "DEBUG"
     assert values["working_memory_capacity"] == 32
     assert values["working_memory_entry_ttl_seconds"] == 900
+    assert values["conversation_history_max_exchanges"] == 4
+    assert values["conversation_history_max_characters"] == 8000
     assert values["ai_enabled"] is True
     assert values["ai_provider"] == "ollama"
     assert values["ai_model"] == "test-model"
@@ -92,6 +98,8 @@ def test_loader_loads_env_file_values(tmp_path: Path) -> None:
                 "ATREUS_ALWAYS_ON=off",
                 "export ATREUS_START_WITH_WINDOWS=no",
                 "ATREUS_WORKING_MEMORY_CAPACITY=16",
+                "ATREUS_CONVERSATION_HISTORY_MAX_EXCHANGES=3",
+                "ATREUS_CONVERSATION_HISTORY_MAX_CHARACTERS=6000",
                 "ATREUS_AI_PROVIDER=ollama",
                 "ATREUS_OLLAMA_MODEL=qwen3:4b",
                 "ATREUS_CONFIRMATION_TTL_SECONDS=60",
@@ -110,6 +118,8 @@ def test_loader_loads_env_file_values(tmp_path: Path) -> None:
     assert values["always_on"] is False
     assert values["start_with_windows"] is False
     assert values["working_memory_capacity"] == 16
+    assert values["conversation_history_max_exchanges"] == 3
+    assert values["conversation_history_max_characters"] == 6000
     assert values["ai_provider"] == "ollama"
     assert values["ollama_model"] == "qwen3:4b"
     assert values["confirmation_ttl_seconds"] == 60
@@ -122,6 +132,8 @@ def test_process_environment_has_priority_over_env_file(tmp_path: Path) -> None:
         "ATREUS_LANGUAGE=es-ES\n"
         "ATREUS_DEBUG=false\n"
         "ATREUS_WORKING_MEMORY_CAPACITY=16\n"
+        "ATREUS_CONVERSATION_HISTORY_MAX_EXCHANGES=3\n"
+        "ATREUS_CONVERSATION_HISTORY_MAX_CHARACTERS=6000\n"
         "ATREUS_AI_PROVIDER=openai\n"
         "ATREUS_OLLAMA_MODEL=qwen3:4b\n"
         "ATREUS_CONFIRMATION_TTL_SECONDS=60\n"
@@ -132,6 +144,8 @@ def test_process_environment_has_priority_over_env_file(tmp_path: Path) -> None:
         "ATREUS_LANGUAGE": "pt-BR",
         "ATREUS_DEBUG": "true",
         "ATREUS_WORKING_MEMORY_CAPACITY": "32",
+        "ATREUS_CONVERSATION_HISTORY_MAX_EXCHANGES": "5",
+        "ATREUS_CONVERSATION_HISTORY_MAX_CHARACTERS": "10000",
         "ATREUS_AI_PROVIDER": "ollama",
         "ATREUS_OLLAMA_MODEL": "qwen3:8b",
         "ATREUS_CONFIRMATION_TTL_SECONDS": "90",
@@ -146,6 +160,8 @@ def test_process_environment_has_priority_over_env_file(tmp_path: Path) -> None:
     assert values["language"] == "pt-BR"
     assert values["debug"] is True
     assert values["working_memory_capacity"] == 32
+    assert values["conversation_history_max_exchanges"] == 5
+    assert values["conversation_history_max_characters"] == 10000
     assert values["ai_provider"] == "ollama"
     assert values["ollama_model"] == "qwen3:8b"
     assert values["confirmation_ttl_seconds"] == 90
@@ -168,6 +184,8 @@ def test_loader_rejects_invalid_boolean_value() -> None:
     "environment_name",
     (
         "ATREUS_WORKING_MEMORY_CAPACITY",
+        "ATREUS_CONVERSATION_HISTORY_MAX_EXCHANGES",
+        "ATREUS_CONVERSATION_HISTORY_MAX_CHARACTERS",
         "ATREUS_CONFIRMATION_TTL_SECONDS",
     ),
 )

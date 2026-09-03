@@ -21,6 +21,12 @@ _ENVIRONMENT_VARIABLES = {
     "working_memory_entry_ttl_seconds": (
         "ATREUS_WORKING_MEMORY_ENTRY_TTL_SECONDS"
     ),
+    "conversation_history_max_exchanges": (
+        "ATREUS_CONVERSATION_HISTORY_MAX_EXCHANGES"
+    ),
+    "conversation_history_max_characters": (
+        "ATREUS_CONVERSATION_HISTORY_MAX_CHARACTERS"
+    ),
     "ai_enabled": "ATREUS_AI_ENABLED",
     "ai_provider": "ATREUS_AI_PROVIDER",
     "ai_model": "ATREUS_AI_MODEL",
@@ -42,6 +48,8 @@ _BOOLEAN_FIELDS = {
 _INTEGER_FIELDS = {
     "working_memory_capacity",
     "working_memory_entry_ttl_seconds",
+    "conversation_history_max_exchanges",
+    "conversation_history_max_characters",
     "ai_timeout_seconds",
     "confirmation_ttl_seconds",
 }

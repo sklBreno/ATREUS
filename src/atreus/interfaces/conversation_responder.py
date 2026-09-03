@@ -1,4 +1,4 @@
-"""Boundary for stateless, non-executive conversational responses."""
+"""Boundary for bounded, non-executive conversational responses."""
 
 from abc import ABC, abstractmethod
 
@@ -15,4 +15,4 @@ class ConversationResponder(ABC):
         request: Request,
         language: InteractionLanguage,
     ) -> ConversationalResponse:
-        """Return one validated response for the current request only."""
+        """Return one validated response for the current request."""

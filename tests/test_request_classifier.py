@@ -77,6 +77,43 @@ def test_classifier_recognizes_bilingual_conversation(content: str) -> None:
 @pytest.mark.parametrize(
     "content",
     (
+        "continue",
+        "continue.",
+        "explique melhor",
+        "explique de forma mais simples",
+        "e por quê?",
+        "por quê?",
+        "e qual é mais rápido?",
+        "go on",
+        "tell me more",
+        "why?",
+        "explain that better",
+        "explain it more simply",
+        "limpar conversa",
+        "clear conversation",
+    ),
+)
+def test_classifier_recognizes_narrow_conversation_follow_ups(
+    content: str,
+) -> None:
+    result = DeterministicRequestClassifier().classify(make_request(content))
+
+    assert result.request_type in {RequestType.QUESTION, RequestType.CONVERSATION}
+    assert result.confidence >= 0.5
+
+
+@pytest.mark.parametrize("content", ("abra isso", "open it"))
+def test_classifier_keeps_contextual_operational_references_as_commands(
+    content: str,
+) -> None:
+    result = DeterministicRequestClassifier().classify(make_request(content))
+
+    assert result.request_type is RequestType.COMMAND
+
+
+@pytest.mark.parametrize(
+    "content",
+    (
         "abra a calculadora",
         "abre a calculadora",
         "abra o bloco de notas",

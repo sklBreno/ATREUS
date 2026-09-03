@@ -1,4 +1,4 @@
-"""Integration tests for Conversational AI V0."""
+"""Integration tests for bounded conversational AI."""
 
 from collections.abc import Iterator
 
@@ -418,5 +418,112 @@ def test_missing_credential_returns_localized_unavailable_response(
 
     assert console.run() == 0
     assert outputs == ["I can't generate a response right now."]
+    assert launcher.calls == []
+    assert reader.calls == []
+
+
+def test_follow_up_receives_prior_exchange_without_current_request_duplication() -> None:
+    provider = PurposeAwareAIProvider()
+    runtime, launcher, reader, _ = build_runtime(provider)
+
+    runtime.submit("me explique DNS")
+    result = runtime.submit("explique de forma mais simples")
+
+    assert result.conversational_response is not None
+    assert len(provider.requests) == 2
+    follow_up = provider.requests[1]
+    assert tuple(message.content for message in follow_up.history) == (
+        "me explique DNS",
+        "An operating system manages hardware and applications.",
+    )
+    assert follow_up.content == "explique de forma mais simples"
+    assert follow_up.content not in tuple(
+        message.content for message in follow_up.history
+    )
+    assert launcher.calls == []
+    assert reader.calls == []
+
+
+def test_current_request_language_controls_mixed_language_conversation() -> None:
+    provider = PurposeAwareAIProvider()
+    runtime, _, _, _ = build_runtime(provider)
+
+    runtime.submit("me explique DNS")
+    result = runtime.submit("explain it more simply")
+
+    assert result.conversational_response is not None
+    assert result.conversational_response.language is InteractionLanguage.EN_US
+    assert "Answer in English" in provider.requests[1].instruction
+    assert provider.requests[1].history[0].content == "me explique DNS"
+
+
+def test_conversation_content_is_absent_from_structured_logs() -> None:
+    class PrivateContentProvider(PurposeAwareAIProvider):
+        """Return private content with valid request correlation."""
+
+        def generate(self, request: AIRequest) -> AIResponse:
+            """Return one correlated response containing private dialogue."""
+            self.requests.append(request)
+            return AIResponse(
+                request.ai_request_id,
+                request.request_id,
+                "private dialogue answer",
+                "test",
+                "test-model",
+                NOW,
+            )
+
+    writer = RecordingLogWriter()
+    runtime, _, _, _ = build_runtime(PrivateContentProvider(), writer=writer)
+
+    runtime.submit("private dialogue question")
+
+    serialized = repr(writer.records)
+    assert "private dialogue question" not in serialized
+    assert "private dialogue answer" not in serialized
+
+
+def test_clear_conversation_uses_zero_ai_and_removes_follow_up_context() -> None:
+    provider = PurposeAwareAIProvider()
+    runtime, _, _, _ = build_runtime(provider)
+
+    runtime.submit("what is DNS?")
+    cleared = runtime.submit("clear conversation")
+    follow_up = runtime.submit("why?")
+
+    assert cleared.conversational_response is not None
+    assert cleared.conversational_response.text == "Current conversation cleared."
+    assert follow_up.conversational_response is not None
+    assert len(provider.requests) == 2
+    assert provider.requests[1].history == ()
+
+
+def test_request_interpreter_receives_no_conversation_history() -> None:
+    provider = PurposeAwareAIProvider()
+    runtime, launcher, _, _ = build_runtime(provider)
+
+    runtime.submit("what is DNS?")
+    result = runtime.submit("Please open calculator for me")
+
+    assert len(provider.requests) == 2
+    interpretation_request = provider.requests[1]
+    assert interpretation_request.purpose is AIRequestPurpose.REQUEST_INTERPRETATION
+    assert interpretation_request.history == ()
+    assert result.decision.outcome is DecisionOutcome.ASK_FOR_CONFIRMATION
+    assert result.execution_results == ()
+    assert launcher.calls == []
+
+
+def test_conversation_history_cannot_resolve_operational_reference() -> None:
+    provider = PurposeAwareAIProvider()
+    runtime, launcher, reader, _ = build_runtime(provider)
+
+    runtime.submit("what is a calculator?")
+    result = runtime.submit("abra isso")
+
+    assert len(provider.requests) == 1
+    assert result.decision.outcome is DecisionOutcome.ASK_FOR_CONFIRMATION
+    assert result.plan is None
+    assert result.execution_results == ()
     assert launcher.calls == []
     assert reader.calls == []

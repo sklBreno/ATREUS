@@ -106,7 +106,8 @@ Examples:
 - The Capability Runtime owns capability execution events.
 - The AI Provider owns `AIRequestStarted`, `AIRequestCompleted`, and
   `AIRequestFailed`. Each includes the approved AI request purpose.
-- Conversational AI V0 publishes no conversation-specific event.
+- Conversational AI V1 and Conversation History V1 publish no
+  conversation-specific event.
 - Interactive Confirmation V0 publishes no domain events. Existing
   `DecisionMade`, `RequestCompleted`, and sanitized `ErrorOccurred` events
   describe its request-level effects without raw confirmation content.

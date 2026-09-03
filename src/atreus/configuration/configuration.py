@@ -22,6 +22,8 @@ class Configuration:
     log_level: str = "INFO"
     working_memory_capacity: int = 64
     working_memory_entry_ttl_seconds: int = 1800
+    conversation_history_max_exchanges: int = 6
+    conversation_history_max_characters: int = 12000
     ai_enabled: bool = False
     ai_provider: str = "openai"
     ai_model: str = ""

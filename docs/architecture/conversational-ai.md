@@ -1,17 +1,17 @@
 # Conversational AI
 
 **Status:** Approved  
-**Version:** 1.0  
+**Version:** 1.1
 **Last Updated:** 2026-09-02
 
 ---
 
 # Purpose
 
-Conversational AI V0 provides one stateless, provider-backed response for
-eligible questions and conversational requests. It adds a production response
-boundary without turning AI into an authorization, planning, execution, or
-memory component.
+Conversational AI V1 provides bounded provider-backed responses with short-term
+continuity for eligible questions and conversational requests. It does not turn
+AI into an authorization, planning, execution, Working Memory, or Long-Term
+Memory component.
 
 ATREUS remains a personal intelligence platform rather than a chatbot. The
 conversation path is one bounded interaction capability within the existing
@@ -21,18 +21,20 @@ Core-owned request flow.
 
 # Scope
 
-Version 0 supports:
+Version 1 supports:
 
 - Brazilian Portuguese as the primary and default language.
 - English as the secondary language.
 - Deterministic identity, capability-summary, unsupported-capability, and
   secret-refusal responses.
 - One bounded provider request for other eligible questions or conversation.
+- Bounded process-local history of complete successful conversational
+  exchanges.
+- Exact bilingual commands for clearing the current conversation.
 - Sanitized localized failure when conversational generation is unavailable.
 
-Version 0 is stateless. It has no conversation history, retrieval, memory
-promotion, tool calling, streaming, web access, filesystem access, or external
-action execution.
+Version 1 has no persistent history, retrieval, memory promotion, tool calling,
+streaming, web access, filesystem access, or external action execution.
 
 ---
 
@@ -54,6 +56,10 @@ contains only approved platform-neutral application identifiers that can be
 opened or observed. It contains no executable, process, path, permission,
 provider, or native-system detail.
 
+`ConversationHistorySnapshot` is a stable oldest-first view of complete recent
+exchanges. It is captured and consumed only by the responder. See
+`docs/architecture/conversation-history.md`.
+
 ---
 
 # Request Flow
@@ -66,7 +72,9 @@ Request
     -> DELEGATE(ai.conversation_responder)
     -> Core
     -> ConversationResponder
+    -> one bounded ConversationHistorySnapshot
     -> deterministic self-knowledge or one AI Provider request
+    -> atomic complete-exchange append after successful validation
     -> ConversationalResponse
     -> foreground interface
 ```
@@ -109,9 +117,14 @@ The provider receives no tools, function calls, web access, file access, shell,
 Planner, Capability Runtime, or System Layer interface. Provider output is text
 only and cannot authorize or trigger a second workflow.
 
-ContextSnapshot and MemorySnapshot are intentionally excluded from `AIRequest`
-in V0. The responder receives neither contract and does not retain request or
-response history.
+ContextSnapshot and MemorySnapshot remain excluded from `AIRequest`. For
+conversational generation only, `AIRequest.history` contains bounded alternating
+`USER` and `ASSISTANT` messages derived from complete prior exchanges. The
+current request remains only in `AIRequest.content`.
+
+Request interpretation requires empty history. Conversation History is not
+available to Request Interpreter, Decision Engine, Planner, Confirmation,
+Capability Runtime, or System Layer.
 
 ---
 
@@ -145,6 +158,14 @@ is passed explicitly to the responder and returned in the response contract.
 Conversation does not infer language through AI and does not change the
 language rules for Interactive Confirmation or deterministic action rendering.
 
+History preserves each exchange in its original language. The current request
+selects the current response language, so one process-local conversation may
+contain both Brazilian Portuguese and English.
+
+Exact normalized requests `limpar conversa` and `clear conversation` clear only
+Conversation History, make no AI request, and are not retained. Working Memory
+and Interactive Confirmation are unaffected.
+
 ---
 
 # Failure Handling
@@ -158,14 +179,21 @@ Provider exception messages, prompts, raw request content, raw response text,
 credentials, Context, and Working Memory must not appear in events or structured
 logs.
 
+History remains only in RAM. Ollama receives bounded history through its local
+endpoint. OpenAI receives the same bounded history through the selected cloud
+provider for the current conversation request.
+
 Deterministic identity, capability, and secret responses remain available when
 the external provider is unavailable because they require no provider call.
+Successful identity, capability, and limitation exchanges may be retained for
+follow-up continuity. Secret refusals, failures, clear requests, and operational
+results are never retained.
 
 ---
 
 # Observability
 
-No conversation-specific event is introduced in V0. Existing AI lifecycle
+No conversation-specific event is introduced in V1. Existing AI lifecycle
 events include `purpose` so operators can distinguish interpretation from
 conversation without recording content:
 
@@ -180,9 +208,10 @@ contain no conversation text.
 
 # Composition
 
-Bootstrap creates one `ProviderBackedConversationResponder` from the selected
-`AIProvider`, the read-only Capability Catalog, and validated timeout policy. It
-injects the responder into Core through `ConversationResponder`.
+Bootstrap creates one process-local `InMemoryConversationHistory` and one
+`ProviderBackedConversationResponder` from the selected `AIProvider`, the
+read-only Capability Catalog, injected Clock, and validated policies. It injects
+only the responder into Core through `ConversationResponder`.
 
 Bootstrap remains a composition root. It contains no conversational decision,
 prompt rendering, response text, or provider-specific business logic.
@@ -191,11 +220,11 @@ prompt rendering, response text, or provider-specific business logic.
 
 # Testing Requirements
 
-Tests must cover deterministic bilingual self-knowledge, capability summaries,
-secret refusal, unsupported-capability honesty, one provider call for general
-conversation, provider-purpose translation, response validation, unavailable
-and failing providers, sanitization, operational precedence, malicious-looking
-input isolation, and full offline Core and console flows.
+Tests must cover deterministic bilingual self-knowledge, bounded history,
+complete-exchange atomicity, FIFO pruning, exact clear commands, mixed-language
+continuity, provider-purpose translation, response validation, unavailable and
+failing providers, sanitization, operational precedence, historical-reference
+isolation, and full offline Core and console flows.
 
 Tests use fake providers and System Layer boundaries. Ollama HTTP tests use an
 isolated transport double. Automated tests require no running local model,
@@ -205,7 +234,7 @@ network credential, or real desktop action.
 
 # Future Evolution
 
-Conversation history, explicit continuity, selective Working Memory use,
+Explicit concurrent sessions, persistent history, selective Working Memory use,
 Long-Term Memory retrieval, streaming, richer localization, current-information
 retrieval, and tool-assisted answers require separate architecture and explicit
 privacy, authorization, disclosure, and observability policies.
