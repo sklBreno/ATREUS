@@ -62,6 +62,7 @@ The Core is not responsible for:
 - Loading or executing capability implementations.
 - Cataloging capability metadata.
 - Storing memory entries directly.
+- Reading, projecting, persisting, or clearing Personal Profile data.
 - Calling native operating-system APIs.
 - Performing AI processing.
 - Reading environment variables or configuration files.
@@ -173,7 +174,8 @@ Core then coordinates this deterministic Version 1 sequence:
 5. Initialize System Layer adapters.
 6. Initialize the configured AI Provider, bounded Request Interpreter when
    available, bounded Conversation Responder, and its private process-local
-   Conversation History.
+   Conversation History. Bootstrap may also provide private Personal Profile
+   projection and interaction dependencies directly to the responder.
 7. Initialize Capability Registry.
 8. Initialize Capability Runtime and load trusted local capabilities.
 9. Seal Capability Registry after dependency validation.
@@ -270,6 +272,10 @@ interaction language. It validates response correlation and language, then
 returns the immutable response to the foreground boundary. This path does not
 invoke Planner, Capability Runtime, or System Layer, and it cannot execute an
 action. Core supplies neither Context nor Working Memory to the responder.
+
+Core also supplies no Personal Profile. Exact profile interactions and bounded
+selective projection remain private implementation details behind
+`ConversationResponder`; they cannot affect operational routing or authorization.
 
 Conversation History is owned behind the responder boundary. Core does not
 capture, inspect, forward, clear, or store it. The history is unavailable to

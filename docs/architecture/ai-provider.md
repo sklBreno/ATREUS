@@ -84,6 +84,11 @@ Version 1 requests one bounded textual response. Request interpretation uses a
 small structured-output budget. Conversational generation uses at most 512
 output tokens. Streaming and tool calling are future contracts.
 
+When opt-in Personal Profile is enabled, only Conversation Responder may append
+a bounded category-specific projection to `instruction`. The projection is
+declarative user data, not policy or authorization. It is never present for
+request interpretation, and the complete profile is never part of `AIRequest`.
+
 ---
 
 # Provider-Neutral Response
@@ -191,6 +196,12 @@ the responder. It projects bounded complete prior exchanges into `AIRequest`
 and never reaches request interpretation or the operational pipeline. See
 `docs/architecture/conversational-ai.md` and
 `docs/architecture/conversation-history.md`.
+
+Personal Profile is a separate opt-in persisted component. The responder may
+receive only its projection and interaction interfaces. A deterministic
+projection selects clearly relevant approved fields, enforces its configured
+character bound, and labels values as data. Profile-derived responses are not
+retained in Conversation History.
 
 ---
 
@@ -425,6 +436,11 @@ Callers send only the minimum approved request content. Context and Working
 Memory are excluded from AI Provider V0. Provider adapters must not add hidden
 user data. External processing must remain transparent and subject to user
 preferences.
+
+Ollama receives selected Personal Profile projection data only through its
+configured local endpoint. OpenAI receives only the same selected bounded
+projection when it is the explicitly configured provider. Profile content never
+appears in AI events, logs, errors, or representations.
 
 Local-first behavior is preferred when it satisfies the requirement, but the
 architecture does not mandate a permanent provider type.

@@ -26,6 +26,9 @@ def test_configuration_uses_platform_defaults() -> None:
     assert configuration.ollama_base_url == "http://localhost:11434"
     assert configuration.ollama_model == "qwen3:8b"
     assert configuration.confirmation_ttl_seconds == 120
+    assert configuration.personal_profile_enabled is False
+    assert configuration.personal_profile_projection_max_characters == 2000
+    assert configuration.personal_profile_clear_confirmation_ttl_seconds == 120
     assert configuration.start_with_windows is True
     assert configuration.always_on is True
 

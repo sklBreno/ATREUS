@@ -53,6 +53,9 @@ required.
 Conversation Responder provides bounded text through AI Provider and owns access
 to a separate process-local Conversation History. Neither boundary enters
 Planner, Capability Runtime, or System Layer.
+Personal Profile provides opt-in local user-approved facts only to deterministic
+profile interaction and bounded conversational projection. It never enters the
+operational pipeline.
 Configuration provides validated settings during bootstrap.
 Domain modules publish immutable facts through the Event Bus.
 ```
@@ -172,6 +175,25 @@ pipeline.
 
 ---
 
+## Personal Profile
+
+Personal Profile V0 is a distinct opt-in boundary for explicit, relatively
+stable, user-approved facts and preferences. It uses strict schema version 1
+and atomic JSON persistence in the local per-user data directory, outside the
+repository.
+
+Only Conversation Responder may receive a deterministic bounded projection of
+clearly relevant profile fields. Read and show are local and make no AI request.
+Clear requires a dedicated confirmation. Profile content is unavailable to
+Request Interpreter, Decision Engine, Planner, operational Confirmation,
+Capability Runtime, and System Layer, and it cannot authorize actions.
+
+Personal Profile is separate from Conversation History, Working Memory,
+Context, Configuration, self-knowledge, and future Long-Term Memory. V0 has no
+automatic learning, extraction, synchronization, or AI-generated writes.
+
+---
+
 ## Capability Registry
 
 Capability Registry is the authoritative catalog of capability metadata.
@@ -243,6 +265,11 @@ secret-refusal responses are deterministic. General responses use one bounded
 AI request with complete prior conversational exchanges, no tools, Context,
 Working Memory, web, filesystem, or execution access. Exact bilingual clear
 requests remove only the current process-local Conversation History.
+
+When Personal Profile is explicitly enabled, the responder may add one bounded
+category-specific projection to a relevant conversational request. The full
+profile is never sent automatically, and profile-derived responses are not
+retained in Conversation History.
 
 ## Interactive Confirmation
 
@@ -401,6 +428,7 @@ Event ownership follows the state owner:
 - Planner owns `PlanCreated`.
 - Working Memory V0 publishes no events.
 - Conversation History V1 publishes no events.
+- Personal Profile V0 publishes no events.
 - Capability Registry owns catalog and availability events.
 - Capability Runtime owns capability execution events.
 - AI Provider owns AI request and availability events.
@@ -423,7 +451,8 @@ Dependencies point toward abstractions and remain acyclic:
 - Request Interpreter depends on AI Provider and the read-only Capability
   Catalog.
 - Conversation Responder depends on AI Provider and the read-only Capability
-  Catalog, plus its private Conversation History boundary.
+  Catalog, plus its private Conversation History and bounded Personal Profile
+  projection boundaries.
 - Capability implementations may depend on narrow System Layer or AI Provider
   interfaces.
 - Domain modules do not depend on Core.
@@ -438,6 +467,11 @@ entry. Conversation History V1 uses configurable defaults of six complete
 exchanges and 12,000 characters. Context stabilization, planning limits, and
 execution timeouts continue to use validated configurable policies when
 implemented.
+
+Personal Profile V0 is disabled by default. Its projection defaults to 2,000
+characters and its dedicated clear-confirmation lifetime defaults to 120
+seconds. These values are validated Configuration policy; profile fields are
+never Configuration or environment values.
 
 Modules must not hardcode values that belong to validated configuration policy.
 

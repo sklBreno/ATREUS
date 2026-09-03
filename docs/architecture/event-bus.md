@@ -108,6 +108,8 @@ Examples:
   `AIRequestFailed`. Each includes the approved AI request purpose.
 - Conversational AI V1 and Conversation History V1 publish no
   conversation-specific event.
+- Personal Profile V0 publishes no event. Its fields, projections, paths, and
+  imported documents remain outside event payloads.
 - Interactive Confirmation V0 publishes no domain events. Existing
   `DecisionMade`, `RequestCompleted`, and sanitized `ErrorOccurred` events
   describe its request-level effects without raw confirmation content.

@@ -14,6 +14,7 @@ conversational exchanges and exposes them through immutable snapshots.
 
 Conversation History is separate from Working Memory and Long-Term Memory. It
 does not decide, plan, authorize, execute, infer context, or persist data.
+It is also separate from the explicit persisted Personal Profile.
 
 ---
 
@@ -105,6 +106,11 @@ retained. Secret-refusal requests, clear requests, failures, operational
 results, application status, confirmations, and unsafe-action rejections are
 not retained.
 
+Personal Profile read, show, and clear interactions are never retained. A
+provider-backed response generated with a Personal Profile projection is also
+excluded so profile-derived content cannot be retransmitted in a later
+unrelated request.
+
 ---
 
 # Action Isolation
@@ -188,3 +194,6 @@ Explicit concurrent sessions, token-aware budgets, summaries, persistence,
 selective promotion, semantic retrieval, and distributed synchronization
 require separate architecture. Conversation History must never promote data to
 Working Memory or Long-Term Memory automatically.
+
+Conversation History must also never import from or promote content into
+Personal Profile automatically.

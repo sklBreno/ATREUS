@@ -21,6 +21,9 @@ def test_manager_creates_configuration_from_loaded_values() -> None:
             "ATREUS_AI_MODEL": "test-model",
             "ATREUS_AI_TIMEOUT_SECONDS": "20",
             "ATREUS_CONFIRMATION_TTL_SECONDS": "75",
+            "ATREUS_PERSONAL_PROFILE_ENABLED": "true",
+            "ATREUS_PERSONAL_PROFILE_PROJECTION_MAX_CHARACTERS": "1800",
+            "ATREUS_PERSONAL_PROFILE_CLEAR_CONFIRMATION_TTL_SECONDS": "80",
             "ATREUS_PERMISSION_GRANTS": "application.read",
         },
     )
@@ -37,6 +40,9 @@ def test_manager_creates_configuration_from_loaded_values() -> None:
     assert configuration.ai_model == "test-model"
     assert configuration.ai_timeout_seconds == 20
     assert configuration.confirmation_ttl_seconds == 75
+    assert configuration.personal_profile_enabled is True
+    assert configuration.personal_profile_projection_max_characters == 1800
+    assert configuration.personal_profile_clear_confirmation_ttl_seconds == 80
     assert configuration.permission_grants == ("application.read",)
 
 

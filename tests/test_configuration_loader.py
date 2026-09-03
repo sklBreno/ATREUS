@@ -31,6 +31,9 @@ def test_loader_returns_default_configuration_values() -> None:
         "ollama_base_url": "http://localhost:11434",
         "ollama_model": "qwen3:8b",
         "confirmation_ttl_seconds": 120,
+        "personal_profile_enabled": False,
+        "personal_profile_projection_max_characters": 2000,
+        "personal_profile_clear_confirmation_ttl_seconds": 120,
         "permission_grants": ("application.control", "application.read"),
         "start_with_windows": True,
         "always_on": True,
@@ -53,6 +56,9 @@ def test_loader_loads_process_environment_values() -> None:
         "ATREUS_OLLAMA_BASE_URL": "http://127.0.0.1:11434",
         "ATREUS_OLLAMA_MODEL": "qwen3:4b",
         "ATREUS_CONFIRMATION_TTL_SECONDS": "90",
+        "ATREUS_PERSONAL_PROFILE_ENABLED": "true",
+        "ATREUS_PERSONAL_PROFILE_PROJECTION_MAX_CHARACTERS": "1500",
+        "ATREUS_PERSONAL_PROFILE_CLEAR_CONFIRMATION_TTL_SECONDS": "60",
         "ATREUS_PERMISSION_GRANTS": "application.read",
     }
 
@@ -75,6 +81,9 @@ def test_loader_loads_process_environment_values() -> None:
     assert values["ollama_base_url"] == "http://127.0.0.1:11434"
     assert values["ollama_model"] == "qwen3:4b"
     assert values["confirmation_ttl_seconds"] == 90
+    assert values["personal_profile_enabled"] is True
+    assert values["personal_profile_projection_max_characters"] == 1500
+    assert values["personal_profile_clear_confirmation_ttl_seconds"] == 60
     assert values["permission_grants"] == ("application.read",)
 
 
@@ -103,6 +112,9 @@ def test_loader_loads_env_file_values(tmp_path: Path) -> None:
                 "ATREUS_AI_PROVIDER=ollama",
                 "ATREUS_OLLAMA_MODEL=qwen3:4b",
                 "ATREUS_CONFIRMATION_TTL_SECONDS=60",
+                "ATREUS_PERSONAL_PROFILE_ENABLED=true",
+                "ATREUS_PERSONAL_PROFILE_PROJECTION_MAX_CHARACTERS=1000",
+                "ATREUS_PERSONAL_PROFILE_CLEAR_CONFIRMATION_TTL_SECONDS=45",
                 "ATREUS_PERMISSION_GRANTS=application.control",
             )
         ),
@@ -123,6 +135,9 @@ def test_loader_loads_env_file_values(tmp_path: Path) -> None:
     assert values["ai_provider"] == "ollama"
     assert values["ollama_model"] == "qwen3:4b"
     assert values["confirmation_ttl_seconds"] == 60
+    assert values["personal_profile_enabled"] is True
+    assert values["personal_profile_projection_max_characters"] == 1000
+    assert values["personal_profile_clear_confirmation_ttl_seconds"] == 45
     assert values["permission_grants"] == ("application.control",)
 
 
@@ -137,6 +152,9 @@ def test_process_environment_has_priority_over_env_file(tmp_path: Path) -> None:
         "ATREUS_AI_PROVIDER=openai\n"
         "ATREUS_OLLAMA_MODEL=qwen3:4b\n"
         "ATREUS_CONFIRMATION_TTL_SECONDS=60\n"
+        "ATREUS_PERSONAL_PROFILE_ENABLED=false\n"
+        "ATREUS_PERSONAL_PROFILE_PROJECTION_MAX_CHARACTERS=1000\n"
+        "ATREUS_PERSONAL_PROFILE_CLEAR_CONFIRMATION_TTL_SECONDS=45\n"
         "ATREUS_PERMISSION_GRANTS=application.control\n",
         encoding="utf-8",
     )
@@ -149,6 +167,9 @@ def test_process_environment_has_priority_over_env_file(tmp_path: Path) -> None:
         "ATREUS_AI_PROVIDER": "ollama",
         "ATREUS_OLLAMA_MODEL": "qwen3:8b",
         "ATREUS_CONFIRMATION_TTL_SECONDS": "90",
+        "ATREUS_PERSONAL_PROFILE_ENABLED": "true",
+        "ATREUS_PERSONAL_PROFILE_PROJECTION_MAX_CHARACTERS": "1500",
+        "ATREUS_PERSONAL_PROFILE_CLEAR_CONFIRMATION_TTL_SECONDS": "75",
         "ATREUS_PERMISSION_GRANTS": "application.read",
     }
 
@@ -165,6 +186,9 @@ def test_process_environment_has_priority_over_env_file(tmp_path: Path) -> None:
     assert values["ai_provider"] == "ollama"
     assert values["ollama_model"] == "qwen3:8b"
     assert values["confirmation_ttl_seconds"] == 90
+    assert values["personal_profile_enabled"] is True
+    assert values["personal_profile_projection_max_characters"] == 1500
+    assert values["personal_profile_clear_confirmation_ttl_seconds"] == 75
     assert values["permission_grants"] == ("application.read",)
 
 
@@ -187,6 +211,8 @@ def test_loader_rejects_invalid_boolean_value() -> None:
         "ATREUS_CONVERSATION_HISTORY_MAX_EXCHANGES",
         "ATREUS_CONVERSATION_HISTORY_MAX_CHARACTERS",
         "ATREUS_CONFIRMATION_TTL_SECONDS",
+        "ATREUS_PERSONAL_PROFILE_PROJECTION_MAX_CHARACTERS",
+        "ATREUS_PERSONAL_PROFILE_CLEAR_CONFIRMATION_TTL_SECONDS",
     ),
 )
 def test_loader_rejects_invalid_integer_value(environment_name: str) -> None:

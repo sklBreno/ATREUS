@@ -34,6 +34,13 @@ _ENVIRONMENT_VARIABLES = {
     "ollama_base_url": "ATREUS_OLLAMA_BASE_URL",
     "ollama_model": "ATREUS_OLLAMA_MODEL",
     "confirmation_ttl_seconds": "ATREUS_CONFIRMATION_TTL_SECONDS",
+    "personal_profile_enabled": "ATREUS_PERSONAL_PROFILE_ENABLED",
+    "personal_profile_projection_max_characters": (
+        "ATREUS_PERSONAL_PROFILE_PROJECTION_MAX_CHARACTERS"
+    ),
+    "personal_profile_clear_confirmation_ttl_seconds": (
+        "ATREUS_PERSONAL_PROFILE_CLEAR_CONFIRMATION_TTL_SECONDS"
+    ),
     "permission_grants": "ATREUS_PERMISSION_GRANTS",
     "start_with_windows": "ATREUS_START_WITH_WINDOWS",
     "always_on": "ATREUS_ALWAYS_ON",
@@ -42,6 +49,7 @@ _ENVIRONMENT_VARIABLES = {
 _BOOLEAN_FIELDS = {
     "debug",
     "ai_enabled",
+    "personal_profile_enabled",
     "start_with_windows",
     "always_on",
 }
@@ -52,6 +60,8 @@ _INTEGER_FIELDS = {
     "conversation_history_max_characters",
     "ai_timeout_seconds",
     "confirmation_ttl_seconds",
+    "personal_profile_projection_max_characters",
+    "personal_profile_clear_confirmation_ttl_seconds",
 }
 _TUPLE_FIELDS = {"permission_grants"}
 _TRUE_VALUES = {"1", "true", "yes", "on"}

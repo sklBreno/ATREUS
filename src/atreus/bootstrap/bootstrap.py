@@ -44,6 +44,17 @@ from atreus.memory.models import WorkingMemoryPolicy
 from atreus.memory.working_memory import InMemoryWorkingMemory
 from atreus.planner.models import PlanningConstraints
 from atreus.planner.planner import DeterministicPlanner
+from atreus.profile.interaction import (
+    DeterministicPersonalProfileInteractionHandler,
+)
+from atreus.profile.json_store import (
+    DisabledPersonalProfileStore,
+    JsonPersonalProfileStore,
+)
+from atreus.profile.path import resolve_personal_profile_path
+from atreus.profile.projection import (
+    DeterministicPersonalProfileProjectionProvider,
+)
 from atreus.request_classifier.classifier import DeterministicRequestClassifier
 from atreus.runtime.console import InputReader, InteractiveConsole, OutputWriter
 from atreus.runtime.host import RuntimeHost
@@ -78,6 +89,7 @@ class Bootstrap:
         log_writer: LogWriter | None = None,
         log_path: Path = _OBSERVABILITY_V0_LOG_PATH,
         ai_provider: AIProvider | None = None,
+        personal_profile_path: Path | None = None,
     ) -> None:
         """Initialize Bootstrap with injectable infrastructure boundaries.
 
@@ -91,6 +103,8 @@ class Bootstrap:
             log_writer: Optional injected structured logging boundary.
             log_path: Local JSON Lines destination used by the default writer.
             ai_provider: Optional injected provider used instead of composition.
+            personal_profile_path: Optional injected local profile path for tests
+                and special composition.
         """
         self._configuration_provider = (
             configuration_provider
@@ -112,6 +126,7 @@ class Bootstrap:
         self._log_writer = log_writer
         self._log_path = log_path
         self._ai_provider = ai_provider
+        self._personal_profile_path = personal_profile_path
 
     def run(self) -> Configuration:
         """Initialize and return the foundation runtime configuration.
@@ -192,6 +207,33 @@ class Bootstrap:
                 max_characters=configuration.conversation_history_max_characters,
             ),
         )
+        personal_profile_store = (
+            JsonPersonalProfileStore(
+                self._personal_profile_path or resolve_personal_profile_path(),
+                self._clock,
+            )
+            if configuration.personal_profile_enabled
+            else DisabledPersonalProfileStore(self._clock)
+        )
+        personal_profile_store.get_profile()
+        personal_profile_projection_provider = (
+            DeterministicPersonalProfileProjectionProvider(
+                personal_profile_store,
+                configuration.personal_profile_projection_max_characters,
+            )
+        )
+        personal_profile_interaction_handler = (
+            DeterministicPersonalProfileInteractionHandler(
+                personal_profile_store,
+                self._clock,
+                timedelta(
+                    seconds=(
+                        configuration.personal_profile_clear_confirmation_ttl_seconds
+                    )
+                ),
+                enabled=configuration.personal_profile_enabled,
+            )
+        )
         registry = InMemoryCapabilityRegistry(event_bus)
         ai_provider = self._compose_ai_provider(configuration, event_bus)
         capability_runtime = InProcessCapabilityRuntime(
@@ -227,6 +269,8 @@ class Bootstrap:
             configuration.ai_timeout_seconds,
             conversation_history,
             self._clock,
+            personal_profile_projection_provider,
+            personal_profile_interaction_handler,
         )
         started_at = self._clock.now()
         core = Core(

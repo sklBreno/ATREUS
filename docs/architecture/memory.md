@@ -14,8 +14,9 @@ Memory provides bounded temporary platform information needed during the
 current ATREUS process.
 
 Working Memory is distinct from current Context, Configuration, conversation
-history, Long-Term Memory, Knowledge Memory, and Experience Memory. It stores
-only explicit temporary facts and does not decide, learn, infer, or act.
+history, Personal Profile, Long-Term Memory, Knowledge Memory, and Experience
+Memory. It stores only explicit temporary facts and does not decide, learn,
+infer, or act.
 
 ---
 
@@ -68,6 +69,7 @@ Working Memory is not responsible for:
 
 - Long-term retention or persistence.
 - User preferences, learned knowledge, or historical experience.
+- Explicit persisted Personal Profile facts or preferences.
 - Conversation behavior or complete conversation history.
 - Context detection or signal retention.
 - Configuration loading.
@@ -252,3 +254,7 @@ retrieval, embeddings, cross-device synchronization, and promotion policy are
 separate future architecture. AI may suggest memory candidates in the future,
 but it must never write directly to the store or promote data without approved
 policy and authorization.
+
+Personal Profile is a separate opt-in persistent boundary for explicit
+user-approved facts. Working Memory neither reads it nor receives automatic
+promotion from it.

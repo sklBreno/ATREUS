@@ -31,6 +31,9 @@ class Configuration:
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen3:8b"
     confirmation_ttl_seconds: int = 120
+    personal_profile_enabled: bool = False
+    personal_profile_projection_max_characters: int = 2000
+    personal_profile_clear_confirmation_ttl_seconds: int = 120
     permission_grants: tuple[str, ...] = (
         "application.control",
         "application.read",
