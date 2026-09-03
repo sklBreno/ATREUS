@@ -26,6 +26,9 @@ _EXPECTED_TYPES: dict[
     "ollama_base_url": str,
     "ollama_model": str,
     "confirmation_ttl_seconds": int,
+    "personal_profile_enabled": bool,
+    "personal_profile_projection_max_characters": int,
+    "personal_profile_clear_confirmation_ttl_seconds": int,
     "permission_grants": tuple,
     "start_with_windows": bool,
     "always_on": bool,
@@ -116,6 +119,8 @@ class ConfigurationValidator:
             "conversation_history_max_characters",
             "ai_timeout_seconds",
             "confirmation_ttl_seconds",
+            "personal_profile_projection_max_characters",
+            "personal_profile_clear_confirmation_ttl_seconds",
         ):
             value = values[field_name]
             if isinstance(value, int) and value <= 0:

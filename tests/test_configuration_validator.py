@@ -37,6 +37,11 @@ def test_validator_accepts_valid_configuration() -> None:
         ("ai_timeout_seconds", True),
         ("confirmation_ttl_seconds", 0),
         ("confirmation_ttl_seconds", True),
+        ("personal_profile_enabled", "false"),
+        ("personal_profile_projection_max_characters", 0),
+        ("personal_profile_projection_max_characters", True),
+        ("personal_profile_clear_confirmation_ttl_seconds", -1),
+        ("personal_profile_clear_confirmation_ttl_seconds", True),
     ),
 )
 def test_validator_rejects_invalid_values(

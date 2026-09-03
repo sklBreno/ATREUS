@@ -148,6 +148,10 @@ follow-up forms. These rules identify request type only. They do not read
 Conversation History, resolve references, generate responses, select a
 provider, or route execution.
 
+Personal Profile V0 adds only exact read, show, clear-request, and dedicated
+clear-confirmation phrases to the same safe internal classification set. The
+classifier receives no profile data and never augments request content.
+
 The local classifier also recognizes `abra` and `abre` as narrow Brazilian
 Portuguese command prefixes. Target resolution remains outside the classifier;
 unsupported targets do not become capabilities because of this classification.

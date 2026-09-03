@@ -55,6 +55,7 @@ The Configuration Manager is **not** responsible for:
 - AI integration.
 - Operating system interaction.
 - Persisting user data.
+- Storing or persisting Personal Profile fields.
 - Storing, persisting, logging, or publicly exposing secrets.
 
 Its sole responsibility is managing application configuration.
@@ -162,7 +163,7 @@ Future versions may additionally support:
 
 - JSON configuration files.
 - YAML configuration files.
-- User profiles.
+- User-specific runtime settings.
 - Database-backed configuration.
 - Cloud synchronization.
 - Graphical settings interface.
@@ -300,6 +301,25 @@ does not support dynamic reload, background expiration, or language
 configuration. PT-BR default and English secondary support are stable
 interaction contracts rather than environment-derived locale policy.
 
+# Personal Profile V0 Settings
+
+Configuration exposes only Personal Profile composition policy:
+
+- `personal_profile_enabled`, default `False`.
+- `personal_profile_projection_max_characters`, default `2000` and positive.
+- `personal_profile_clear_confirmation_ttl_seconds`, default `120` and positive.
+
+The corresponding environment names are
+`ATREUS_PERSONAL_PROFILE_ENABLED`,
+`ATREUS_PERSONAL_PROFILE_PROJECTION_MAX_CHARACTERS`, and
+`ATREUS_PERSONAL_PROFILE_CLEAR_CONFIRMATION_TTL_SECONDS`. They follow the
+existing process environment over `.env` over defaults priority.
+
+Profile fields are user data and never Configuration values or environment
+variables. V0 has no public profile-path override. Bootstrap resolves the safe
+per-user data directory, while tests and special composition may inject a path
+directly. Configuration does not read or persist the profile document.
+
 # AI Provider V0 Settings
 
 Configuration exposes only these non-secret AI settings:
@@ -430,6 +450,8 @@ The module must be tested to ensure:
   source priority for non-secret AI settings.
 - Correct confirmation TTL default, positive-value validation, and source
   priority.
+- Correct Personal Profile disabled default, positive projection and clear TTL
+  policies, source priority, and absence of profile fields or paths.
 - Absence of `ATREUS_OPENAI_API_KEY` from the Configuration pipeline.
 - Exclusion of secrets from Configuration objects, snapshots, representations,
   events, errors, and logs.

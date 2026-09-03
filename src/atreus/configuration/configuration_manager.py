@@ -73,6 +73,18 @@ class ConfigurationManager(ConfigurationProvider):
                 int,
                 values["confirmation_ttl_seconds"],
             ),
+            personal_profile_enabled=cast(
+                bool,
+                values["personal_profile_enabled"],
+            ),
+            personal_profile_projection_max_characters=cast(
+                int,
+                values["personal_profile_projection_max_characters"],
+            ),
+            personal_profile_clear_confirmation_ttl_seconds=cast(
+                int,
+                values["personal_profile_clear_confirmation_ttl_seconds"],
+            ),
             permission_grants=cast(
                 tuple[str, ...],
                 values["permission_grants"],

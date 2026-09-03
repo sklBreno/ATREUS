@@ -31,6 +31,10 @@ Version 1 supports:
 - Bounded process-local history of complete successful conversational
   exchanges.
 - Exact bilingual commands for clearing the current conversation.
+- Exact local Personal Profile read, show, and confirmed-clear interaction when
+  that opt-in module is enabled.
+- Category-specific bounded profile projection for relevant provider-backed
+  conversation.
 - Sanitized localized failure when conversational generation is unavailable.
 
 Version 1 has no persistent history, retrieval, memory promotion, tool calling,
@@ -60,6 +64,11 @@ provider, or native-system detail.
 exchanges. It is captured and consumed only by the responder. See
 `docs/architecture/conversation-history.md`.
 
+`PersonalProfileProjection` is a bounded declarative text projection selected
+from explicit user-approved fields. The responder receives it through
+`PersonalProfileProjectionProvider`; it never receives a filesystem store
+implementation.
+
 ---
 
 # Request Flow
@@ -72,8 +81,10 @@ Request
     -> DELEGATE(ai.conversation_responder)
     -> Core
     -> ConversationResponder
+    -> exact Personal Profile interaction, when applicable
     -> one bounded ConversationHistorySnapshot
-    -> deterministic self-knowledge or one AI Provider request
+    -> deterministic self-knowledge or one relevant profile projection
+    -> one AI Provider request when needed
     -> atomic complete-exchange append after successful validation
     -> ConversationalResponse
     -> foreground interface
@@ -126,6 +137,12 @@ Request interpretation requires empty history. Conversation History is not
 available to Request Interpreter, Decision Engine, Planner, Confirmation,
 Capability Runtime, or System Layer.
 
+Personal Profile remains equally unavailable to those operational components.
+For conversation only, selected values may appear inside the private
+`AIRequest.instruction` as JSON-quoted declarative data with explicit boundaries
+and a configured maximum size. User request language remains authoritative.
+When no category is clearly relevant, no profile data is supplied.
+
 ---
 
 # Self-Knowledge and Safety
@@ -166,6 +183,10 @@ Exact normalized requests `limpar conversa` and `clear conversation` clear only
 Conversation History, make no AI request, and are not retained. Working Memory
 and Interactive Confirmation are unaffected.
 
+Exact Personal Profile read, show, clear-request, and clear-confirmation phrases
+are also handled locally and are never retained in Conversation History. The
+profile clear confirmation deliberately does not accept generic `sim` or `yes`.
+
 ---
 
 # Failure Handling
@@ -182,6 +203,11 @@ logs.
 History remains only in RAM. Ollama receives bounded history through its local
 endpoint. OpenAI receives the same bounded history through the selected cloud
 provider for the current conversation request.
+
+Ollama receives selected profile data only through its local endpoint. OpenAI
+receives only the same bounded selected projection. Responses produced with a
+profile projection are not appended to history, preventing later unrelated
+redisclosure.
 
 Deterministic identity, capability, and secret responses remain available when
 the external provider is unavailable because they require no provider call.
@@ -204,6 +230,9 @@ conversation without recording content:
 Existing request lifecycle events describe Core orchestration. Event payloads
 contain no conversation text.
 
+Personal Profile V0 introduces no event. Profile fields, projections, storage
+paths, and imported documents never appear in event or structured-log payloads.
+
 ---
 
 # Composition
@@ -212,6 +241,10 @@ Bootstrap creates one process-local `InMemoryConversationHistory` and one
 `ProviderBackedConversationResponder` from the selected `AIProvider`, the
 read-only Capability Catalog, injected Clock, and validated policies. It injects
 only the responder into Core through `ConversationResponder`.
+
+When Personal Profile is enabled, Bootstrap additionally injects its projection
+provider and deterministic interaction handler into the responder. The Core
+contract is unchanged.
 
 Bootstrap remains a composition root. It contains no conversational decision,
 prompt rendering, response text, or provider-specific business logic.
@@ -230,6 +263,10 @@ Tests use fake providers and System Layer boundaries. Ollama HTTP tests use an
 isolated transport double. Automated tests require no running local model,
 network credential, or real desktop action.
 
+Personal Profile tests additionally cover exact local read/show, dedicated
+clear confirmation, selective projection, provider disclosure boundaries,
+history exclusion, no operational propagation, and content-free observability.
+
 ---
 
 # Future Evolution
@@ -238,6 +275,9 @@ Explicit concurrent sessions, persistent history, selective Working Memory use,
 Long-Term Memory retrieval, streaming, richer localization, current-information
 retrieval, and tool-assisted answers require separate architecture and explicit
 privacy, authorization, disclosure, and observability policies.
+
+Granular profile edits, automatic candidate extraction, learned facts, and
+profile-to-memory promotion also require separate architecture and user approval.
 
 AI must never write directly to Working Memory or Long-Term Memory, and a
 conversational response must never become executable without returning through

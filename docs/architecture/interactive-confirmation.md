@@ -164,6 +164,12 @@ responses retain precedence over conversational delegation, and both paths use
 the same deterministic interaction-language contract without asking AI to
 resolve language.
 
+Personal Profile clear uses a separate narrow confirmation coordinator because
+this contract is intentionally specific to approved application actions. The
+profile coordinator accepts only explicit bilingual clear-confirmation phrases,
+never the generic `sim`, `yes`, `s`, or `y` operational tokens. Neither
+coordinator can authorize or consume the other's pending operation.
+
 ---
 
 # Events and Privacy
