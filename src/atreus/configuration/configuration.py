@@ -23,8 +23,11 @@ class Configuration:
     working_memory_capacity: int = 64
     working_memory_entry_ttl_seconds: int = 1800
     ai_enabled: bool = False
+    ai_provider: str = "openai"
     ai_model: str = ""
     ai_timeout_seconds: int = 30
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen3:8b"
     confirmation_ttl_seconds: int = 120
     permission_grants: tuple[str, ...] = (
         "application.control",

@@ -10,6 +10,7 @@ from atreus.ai.models import (
     REQUEST_INTERPRETER_SERVICE_ID,
     AIProviderAvailabilityState,
 )
+from atreus.ai.ollama_provider import OllamaProvider
 from atreus.ai.request_interpreter import StructuredRequestInterpreter
 from atreus.ai.unavailable_availability import UnavailableAIAvailabilityProvider
 from atreus.capability.application_status import ApplicationStatusCapability
@@ -275,6 +276,13 @@ class Bootstrap:
             return UnavailableAIAvailabilityProvider()
         if self._ai_provider is not None:
             return self._ai_provider
+        if configuration.ai_provider == "ollama":
+            return OllamaProvider(
+                base_url=configuration.ollama_base_url,
+                model_id=configuration.ollama_model,
+                clock=self._clock,
+                event_bus=event_bus,
+            )
         api_key = os.environ.get("ATREUS_OPENAI_API_KEY")
         if api_key is None or not api_key.strip():
             return UnavailableAIAvailabilityProvider()

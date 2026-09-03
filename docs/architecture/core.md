@@ -331,9 +331,13 @@ from a narrower configured permission.
 
 # AI Provider Initialization
 
-The OpenAI V0 credential enters only through `ATREUS_OPENAI_API_KEY` in the
-process environment. Bootstrap injects it into the concrete adapter and
-supplies Core only with the `RequestInterpreter` abstraction.
+Bootstrap constructs exactly one provider selected by validated Configuration.
+`openai` uses the existing OpenAI adapter and reads its credential only from
+`ATREUS_OPENAI_API_KEY` in the process environment. `ollama` uses the local HTTP
+adapter with its validated local endpoint and model and requires no credential.
+Selection is fixed for one composition; V0 has no automatic fallback or AI
+Router. Bootstrap supplies Core only with provider-neutral `RequestInterpreter`
+and `ConversationResponder` abstractions.
 
 Core must never store, inspect, log, publish, or forward raw credentials.
 AI Provider must not persist them. Credentials are never hardcoded.

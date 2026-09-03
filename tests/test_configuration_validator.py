@@ -73,6 +73,57 @@ def test_validator_requires_model_only_when_ai_is_enabled() -> None:
         ConfigurationValidator().validate(enabled_values)
 
 
+def test_validator_accepts_ollama_without_openai_model() -> None:
+    values: dict[str, object] = _valid_values()
+    values["ai_enabled"] = True
+    values["ai_provider"] = "ollama"
+
+    ConfigurationValidator().validate(values)
+
+
+@pytest.mark.parametrize("provider", ("OpenAI", "local", ""))
+def test_validator_rejects_unknown_ai_provider(provider: str) -> None:
+    values: dict[str, object] = _valid_values()
+    values["ai_provider"] = provider
+
+    with pytest.raises(ConfigurationValidationError, match="provider"):
+        ConfigurationValidator().validate(values)
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    (
+        "https://localhost:11434",
+        "http://example.com:11434",
+        "http://localhost:11434/api",
+        "http://user:password@localhost:11434",
+        "http://localhost:11434?target=other",
+        "http://localhost",
+        " http://localhost:11434",
+    ),
+)
+def test_validator_rejects_non_local_or_ambiguous_ollama_url(
+    base_url: str,
+) -> None:
+    values: dict[str, object] = _valid_values()
+    values["ollama_base_url"] = base_url
+
+    with pytest.raises(ConfigurationValidationError, match="ollama_base_url"):
+        ConfigurationValidator().validate(values)
+
+
+@pytest.mark.parametrize(
+    "model",
+    ("", "qwen 3", " qwen3:8b", "qwen3:8b ", "qwen3:@latest"),
+)
+def test_validator_rejects_invalid_ollama_model(model: str) -> None:
+    values: dict[str, object] = _valid_values()
+    values["ollama_model"] = model
+
+    with pytest.raises(ConfigurationValidationError, match="ollama_model"):
+        ConfigurationValidator().validate(values)
+
+
 @pytest.mark.parametrize(
     "permission_grants",
     (

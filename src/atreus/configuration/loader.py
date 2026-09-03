@@ -22,8 +22,11 @@ _ENVIRONMENT_VARIABLES = {
         "ATREUS_WORKING_MEMORY_ENTRY_TTL_SECONDS"
     ),
     "ai_enabled": "ATREUS_AI_ENABLED",
+    "ai_provider": "ATREUS_AI_PROVIDER",
     "ai_model": "ATREUS_AI_MODEL",
     "ai_timeout_seconds": "ATREUS_AI_TIMEOUT_SECONDS",
+    "ollama_base_url": "ATREUS_OLLAMA_BASE_URL",
+    "ollama_model": "ATREUS_OLLAMA_MODEL",
     "confirmation_ttl_seconds": "ATREUS_CONFIRMATION_TTL_SECONDS",
     "permission_grants": "ATREUS_PERMISSION_GRANTS",
     "start_with_windows": "ATREUS_START_WITH_WINDOWS",

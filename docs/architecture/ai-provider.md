@@ -2,7 +2,7 @@
 
 **Status:** Draft
 
-**Version:** 1.1
+**Version:** 1.2
 
 **Last Updated:** 2026-09-02
 
@@ -122,8 +122,10 @@ class AIProvider(ABC):
 Bootstrap selects and injects an implementation. Consumers never instantiate a
 vendor client directly.
 
-Version 1 supports one active provider implementation at a time. Provider
-selection and fallback chains require separate future architecture.
+Version 1 supports one active provider implementation at a time. Bootstrap
+selects `openai` or `ollama` from validated configuration. Runtime switching,
+automatic fallback, provider priority, and AI routing require separate future
+architecture.
 
 # Request Interpreter V1
 
@@ -204,17 +206,19 @@ Response or Error Normalization
 AIResponse
 ```
 
-For `REQUEST_INTERPRETATION`, the OpenAI adapter uses the official SDK Responses
-API with strict JSON Schema Structured Outputs. The schema rejects additional
+For `REQUEST_INTERPRETATION`, both adapters use a strict JSON Schema. The OpenAI
+adapter uses official SDK Responses API Structured Outputs. The Ollama adapter
+sends the equivalent schema through the local chat API `format` field and
+validates the returned JSON before normalization. The schema rejects additional
 fields and constrains the two approved intents, approved targets, and confidence
 range. It contains no capability, executable, process, PID, path, argument, or
 command field. The interpreter validates the decoded response again because
 provider output remains untrusted and may name a locally unsupported
 intent-target combination.
 
-For `CONVERSATIONAL_RESPONSE`, the same adapter requests bounded plain text and
-does not supply the interpretation schema. Purpose dispatch remains internal to
-the adapter; provider SDK types do not cross the public contract.
+For `CONVERSATIONAL_RESPONSE`, each adapter requests bounded plain text and does
+not supply the interpretation schema. Purpose dispatch remains internal to the
+adapter; provider SDK or transport types do not cross the public contract.
 
 No tools, web search, file search, MCP integration, shell, or executable
 function is supplied to the model. Automatic SDK retries are disabled in V0.
@@ -224,14 +228,39 @@ adapter boundary.
 
 ---
 
+# Local AI / Ollama
+
+Ollama is an optional local implementation of `AIProvider`. Bootstrap selects
+it only when AI is enabled and `ai_provider` is `ollama`. The adapter calls the
+configured local HTTP endpoint at `/api/chat`; it never invokes the Ollama CLI,
+starts a process, or executes a shell.
+
+V0 restricts the configured base URL to explicit HTTP endpoints on `localhost`
+or `127.0.0.1`, disables redirects and proxy use, sends no credentials, performs
+no retry, and enforces the request timeout. The default development endpoint is
+`http://localhost:11434` and the default local model is `qwen3:8b`.
+
+Every request sends `stream=false` and `think=false`. Any provider-specific
+thinking field is ignored and is never returned or logged. The adapter supports
+both current purposes: plain-text conversation and strict structured request
+interpretation. Ollama availability is configuration-level in V0; connection,
+timeout, server, malformed-response, and missing-model failures are normalized
+during generation.
+
+Ollama requires no API key. Selection is static for one runtime composition,
+with no automatic fallback to OpenAI and no AI Router.
+
+---
+
 # Dependencies
 
 The AI Provider abstraction depends on immutable AI contracts and, optionally,
 the `EventBus` abstraction for lifecycle event publication.
 
 Concrete adapters may depend on a local runtime, external SDK, or network
-client, but those dependencies remain internal to the adapter. They must be
-injected and replaceable.
+client, but those dependencies remain internal to the adapter. The Ollama
+adapter uses only the Python standard-library HTTP client. Adapter transport
+dependencies remain isolated and replaceable for tests.
 
 AI Provider does not depend on Core, Planner, Memory, Context Engine, Capability
 Registry, Capability Runtime, or System Layer. The Request Interpreter may
@@ -327,6 +356,11 @@ Contract tests for every provider implementation must cover:
 Consumer tests use fake `AIProvider` implementations and must not require real
 credentials or network access.
 
+Ollama adapter tests additionally cover the fixed local endpoint, POST payload,
+strict schema, `stream=false`, `think=false`, thinking exclusion, response
+limits, redirect rejection, malformed data, missing model, timeout, connection,
+HTTP failures, and the absence of process or shell execution.
+
 Natural Language Actions tests additionally cover strict intent and target
 enums, rejection of extra or native fields, unsupported local combinations,
 one provider call per eligible request, mandatory confirmation for open, and
@@ -363,11 +397,12 @@ Credentials remain inside the concrete adapter's approved secret-loading
 boundary and must never appear in configuration objects, requests, events,
 errors, or logs.
 
-V0 reads only `ATREUS_OPENAI_API_KEY` from the process environment during
+OpenAI reads `ATREUS_OPENAI_API_KEY` from the process environment during
 Bootstrap composition. The value is injected into the OpenAI adapter and is
 never copied into `Configuration`, `.env.example`, provider representations, or
-public diagnostics. `ai_enabled`, `ai_model`, and `ai_timeout_seconds` are the
-only public non-secret AI settings.
+public diagnostics. Ollama V0 uses no credential. Non-secret provider
+selection, model, endpoint, and timeout settings remain in validated
+Configuration.
 
 Callers send only the minimum approved request content. Context and Working
 Memory are excluded from AI Provider V0. Provider adapters must not add hidden
