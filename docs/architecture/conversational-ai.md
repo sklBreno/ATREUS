@@ -91,13 +91,19 @@ Capability questions such as `can you open calculator?` remain non-executive.
 # AI Provider Use
 
 Conversational generation uses `AIRequestPurpose.CONVERSATIONAL_RESPONSE` and
-the existing provider-neutral `AIProvider` interface. The OpenAI adapter selects
+the existing provider-neutral `AIProvider` interface. Bootstrap may select the
+OpenAI cloud adapter or the optional local Ollama adapter. Each adapter selects
 request translation by purpose:
 
 - `REQUEST_INTERPRETATION` uses strict Structured Outputs and a small output
   budget.
 - `CONVERSATIONAL_RESPONSE` uses bounded plain text with a maximum of 512 output
   tokens.
+
+The Ollama adapter calls only its configured local HTTP endpoint, sends
+`stream=false` and `think=false`, and ignores provider-specific thinking data.
+It requires no API key. Provider selection is explicit for one composition;
+V0 has no automatic fallback, runtime switching, or AI Router.
 
 The provider receives no tools, function calls, web access, file access, shell,
 Planner, Capability Runtime, or System Layer interface. Provider output is text
@@ -191,8 +197,9 @@ conversation, provider-purpose translation, response validation, unavailable
 and failing providers, sanitization, operational precedence, malicious-looking
 input isolation, and full offline Core and console flows.
 
-Tests use fake providers and System Layer boundaries. They require no network,
-credential, or real desktop action.
+Tests use fake providers and System Layer boundaries. Ollama HTTP tests use an
+isolated transport double. Automated tests require no running local model,
+network credential, or real desktop action.
 
 ---
 

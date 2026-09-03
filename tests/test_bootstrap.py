@@ -64,11 +64,13 @@ class BootstrapAIProvider(AIProvider):
 def make_ai_configuration_manager(
     *,
     enabled: bool,
+    provider: str = "openai",
     permission_grants: str | None = None,
 ) -> ConfigurationManager:
     """Create validated AI composition settings without secrets."""
     environment = {
         "ATREUS_AI_ENABLED": str(enabled).lower(),
+        "ATREUS_AI_PROVIDER": provider,
         "ATREUS_AI_MODEL": "test-model",
         "ATREUS_AI_TIMEOUT_SECONDS": "10",
     }
@@ -308,3 +310,67 @@ def test_bootstrap_disabled_ai_ignores_injected_provider() -> None:
     runtime.submit("Please open calculator for me")
 
     assert provider.requests == []
+
+
+def test_bootstrap_selects_ollama_without_openai_credential(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = BootstrapAIProvider()
+    captured: dict[str, object] = {}
+
+    def create_provider(**arguments: object) -> AIProvider:
+        captured.update(arguments)
+        return provider
+
+    monkeypatch.delenv("ATREUS_OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "atreus.bootstrap.bootstrap.OllamaProvider",
+        create_provider,
+    )
+    runtime = Bootstrap(
+        configuration_provider=make_ai_configuration_manager(
+            enabled=True,
+            provider="ollama",
+        ),
+        application_launcher=RecordingApplicationLauncher(),
+        application_state_reader=RecordingApplicationStateReader(),
+        clock=FixedClock(),
+        log_writer=RecordingLogWriter(),
+    ).compose()
+
+    runtime.submit("Please open calculator for me")
+
+    assert len(provider.requests) == 1
+    assert captured["base_url"] == "http://localhost:11434"
+    assert captured["model_id"] == "qwen3:8b"
+    assert "api_key" not in captured
+
+
+def test_bootstrap_openai_selection_still_uses_process_credential(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = BootstrapAIProvider()
+    captured: dict[str, object] = {}
+
+    def create_provider(**arguments: object) -> AIProvider:
+        captured.update(arguments)
+        return provider
+
+    monkeypatch.setenv("ATREUS_OPENAI_API_KEY", "private-test-key")
+    monkeypatch.setattr(
+        "atreus.ai.openai_provider.OpenAIProvider",
+        create_provider,
+    )
+    runtime = Bootstrap(
+        configuration_provider=make_ai_configuration_manager(enabled=True),
+        application_launcher=RecordingApplicationLauncher(),
+        application_state_reader=RecordingApplicationStateReader(),
+        clock=FixedClock(),
+        log_writer=RecordingLogWriter(),
+    ).compose()
+
+    runtime.submit("Please open calculator for me")
+
+    assert len(provider.requests) == 1
+    assert captured["api_key"] == "private-test-key"
+    assert captured["model_id"] == "test-model"

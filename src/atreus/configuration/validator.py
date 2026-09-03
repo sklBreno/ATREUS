@@ -1,6 +1,8 @@
 """Validation for loaded ATREUS configuration values."""
 
+import re
 from collections.abc import Mapping
+from urllib.parse import urlsplit
 
 from atreus.configuration.exceptions import ConfigurationValidationError
 
@@ -16,8 +18,11 @@ _EXPECTED_TYPES: dict[
     "working_memory_capacity": int,
     "working_memory_entry_ttl_seconds": int,
     "ai_enabled": bool,
+    "ai_provider": str,
     "ai_model": str,
     "ai_timeout_seconds": int,
+    "ollama_base_url": str,
+    "ollama_model": str,
     "confirmation_ttl_seconds": int,
     "permission_grants": tuple,
     "start_with_windows": bool,
@@ -25,6 +30,11 @@ _EXPECTED_TYPES: dict[
 }
 
 _LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+_AI_PROVIDERS = {"openai", "ollama"}
+_LOCAL_OLLAMA_HOSTS = {"localhost", "127.0.0.1"}
+_OLLAMA_MODEL_PATTERN = re.compile(
+    r"[A-Za-z0-9][A-Za-z0-9._/-]*(?::[A-Za-z0-9._-]+)?"
+)
 
 
 class ConfigurationValidator:
@@ -111,12 +121,58 @@ class ConfigurationValidator:
 
     @staticmethod
     def _validate_ai_configuration(values: Mapping[str, object]) -> None:
-        if values["ai_enabled"] is True:
+        provider = values["ai_provider"]
+        if isinstance(provider, str) and provider not in _AI_PROVIDERS:
+            raise ConfigurationValidationError(
+                f"Unsupported AI provider: {provider!r}."
+            )
+
+        base_url = values["ollama_base_url"]
+        if isinstance(base_url, str):
+            ConfigurationValidator._validate_ollama_base_url(base_url)
+
+        ollama_model = values["ollama_model"]
+        if isinstance(ollama_model, str) and not _OLLAMA_MODEL_PATTERN.fullmatch(
+            ollama_model
+        ):
+            raise ConfigurationValidationError(
+                "Configuration field 'ollama_model' is invalid."
+            )
+
+        if values["ai_enabled"] is not True:
+            return
+        if provider == "openai":
             model = values["ai_model"]
             if isinstance(model, str) and not model.strip():
                 raise ConfigurationValidationError(
-                    "Configuration field 'ai_model' cannot be empty when AI is enabled."
+                    "Configuration field 'ai_model' cannot be empty when the "
+                    "OpenAI provider is enabled."
                 )
+
+    @staticmethod
+    def _validate_ollama_base_url(base_url: str) -> None:
+        try:
+            parsed = urlsplit(base_url)
+            port = parsed.port
+        except ValueError as error:
+            raise ConfigurationValidationError(
+                "Configuration field 'ollama_base_url' is invalid."
+            ) from error
+        if (
+            parsed.scheme != "http"
+            or parsed.hostname not in _LOCAL_OLLAMA_HOSTS
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or port is None
+            or base_url != base_url.strip()
+        ):
+            raise ConfigurationValidationError(
+                "Configuration field 'ollama_base_url' must identify an explicit "
+                "local HTTP endpoint."
+            )
 
     @staticmethod
     def _validate_permission_grants(values: Mapping[str, object]) -> None:

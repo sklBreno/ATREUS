@@ -294,19 +294,27 @@ interaction contracts rather than environment-derived locale policy.
 Configuration exposes only these non-secret AI settings:
 
 - `ai_enabled`, default `False`.
-- `ai_model`, empty while AI is disabled and required to be non-empty when AI
-  is enabled.
+- `ai_provider`, default `openai` and restricted to `openai` or `ollama`.
+- `ai_model`, the existing OpenAI model setting. It is empty while AI is
+  disabled and required to be non-empty when OpenAI is enabled.
 - `ai_timeout_seconds`, default `30` and required to be a positive integer.
+- `ollama_base_url`, default `http://localhost:11434` and restricted in V0 to an
+  explicit HTTP endpoint on `localhost` or `127.0.0.1`.
+- `ollama_model`, default `qwen3:8b` and required to be a normalized model
+  identifier.
 
 The corresponding environment names are `ATREUS_AI_ENABLED`,
-`ATREUS_AI_MODEL`, and `ATREUS_AI_TIMEOUT_SECONDS`. Existing source priority
-remains process environment over `.env` over built-in defaults. V0 does not add
-an `ai_provider` selector or dynamic reload.
+`ATREUS_AI_PROVIDER`, `ATREUS_AI_MODEL`, `ATREUS_AI_TIMEOUT_SECONDS`,
+`ATREUS_OLLAMA_BASE_URL`, and `ATREUS_OLLAMA_MODEL`. Existing source priority
+remains process environment over `.env` over built-in defaults. Provider
+selection is immutable for one runtime composition. V0 has no dynamic reload,
+runtime provider switching, provider fallback, priority list, or AI Router.
 
 `ATREUS_OPENAI_API_KEY` is not a Configuration field. Configuration Loader does
 not recognize or return it, and `.env.example` does not declare it. Bootstrap
 reads that credential directly from the process environment only when AI is
-enabled and injects it into the concrete adapter.
+enabled with the OpenAI provider and injects it into the concrete adapter.
+Ollama uses no credential.
 
 ---
 
@@ -404,7 +412,8 @@ The module must be tested to ensure:
   architecture values.
 - Correct Working Memory defaults, positive-value validation, and source
   priority for capacity and entry TTL.
-- Correct AI-disabled default, model requirement, timeout validation, and
+- Correct AI-disabled default, explicit provider selection, provider-specific
+  model requirements, local Ollama URL validation, timeout validation, and
   source priority for non-secret AI settings.
 - Correct confirmation TTL default, positive-value validation, and source
   priority.

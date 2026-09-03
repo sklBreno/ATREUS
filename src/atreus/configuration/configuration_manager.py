@@ -56,8 +56,11 @@ class ConfigurationManager(ConfigurationProvider):
                 values["working_memory_entry_ttl_seconds"],
             ),
             ai_enabled=cast(bool, values["ai_enabled"]),
+            ai_provider=cast(str, values["ai_provider"]),
             ai_model=cast(str, values["ai_model"]),
             ai_timeout_seconds=cast(int, values["ai_timeout_seconds"]),
+            ollama_base_url=cast(str, values["ollama_base_url"]),
+            ollama_model=cast(str, values["ollama_model"]),
             confirmation_ttl_seconds=cast(
                 int,
                 values["confirmation_ttl_seconds"],

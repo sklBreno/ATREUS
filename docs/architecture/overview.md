@@ -215,6 +215,11 @@ processing when deterministic capabilities are insufficient.
 Concrete providers are replaceable. ATREUS must continue operating in a reduced
 but predictable mode when AI is unavailable.
 
+V0 supports explicit selection of one OpenAI cloud adapter or one local Ollama
+HTTP adapter per runtime composition. Ollama uses no API key, disables thinking
+output, and is restricted to a configured local endpoint. There is no runtime
+switching, automatic provider fallback, or AI Router.
+
 AI Provider is used through `RequestInterpreter` for strict structured
 interpretation of approved `OPEN_APPLICATION` and `APPLICATION_STATUS` intents,
 and through `ConversationResponder` for bounded stateless text. Deterministic
@@ -312,8 +317,9 @@ Version 1 does not include an interactive permission-grant system.
 
 # AI Credentials
 
-AI Provider V0 reads `ATREUS_OPENAI_API_KEY` only from the process environment
-during bootstrap. It is injected into the selected concrete provider adapter.
+The OpenAI adapter reads `ATREUS_OPENAI_API_KEY` only from the process
+environment during bootstrap. It is injected into that concrete provider
+adapter. The local Ollama adapter requires no credential.
 
 Credentials are never hardcoded, persisted by AI Provider, included in public
 configuration snapshots, or written to logs, events, errors, requests, or

@@ -18,8 +18,11 @@ def test_configuration_uses_platform_defaults() -> None:
     assert configuration.working_memory_capacity == 64
     assert configuration.working_memory_entry_ttl_seconds == 1800
     assert configuration.ai_enabled is False
+    assert configuration.ai_provider == "openai"
     assert configuration.ai_model == ""
     assert configuration.ai_timeout_seconds == 30
+    assert configuration.ollama_base_url == "http://localhost:11434"
+    assert configuration.ollama_model == "qwen3:8b"
     assert configuration.confirmation_ttl_seconds == 120
     assert configuration.start_with_windows is True
     assert configuration.always_on is True
