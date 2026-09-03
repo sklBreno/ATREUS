@@ -160,7 +160,7 @@ def test_bootstrap_uses_configured_application_read_grant_for_status() -> None:
         CapabilityExecutionStatus.SUCCEEDED
     )
     assert launch.decision.reason_code == "required_permission_missing"
-    assert len(provider.requests) == 1
+    assert provider.requests == []
     assert len(reader.calls) == 1
     assert launcher.calls == []
 

@@ -80,6 +80,8 @@ _INTENTION_PREFIXES = (
     "my goal is ",
 )
 _COMMAND_PREFIXES = (
+    "abra ",
+    "abre ",
     "close ",
     "create ",
     "launch ",

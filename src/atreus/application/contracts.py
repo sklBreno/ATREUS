@@ -69,6 +69,46 @@ DETERMINISTIC_APPLICATION_COMMANDS: tuple[
         ApplicationIntent.OPEN_APPLICATION,
         ApplicationIdentifier.SPOTIFY,
     ),
+    (
+        "abra a calculadora",
+        ApplicationIntent.OPEN_APPLICATION,
+        ApplicationIdentifier.CALCULATOR,
+    ),
+    (
+        "abre a calculadora",
+        ApplicationIntent.OPEN_APPLICATION,
+        ApplicationIdentifier.CALCULATOR,
+    ),
+    (
+        "abra o bloco de notas",
+        ApplicationIntent.OPEN_APPLICATION,
+        ApplicationIdentifier.NOTEPAD,
+    ),
+    (
+        "abre o bloco de notas",
+        ApplicationIntent.OPEN_APPLICATION,
+        ApplicationIdentifier.NOTEPAD,
+    ),
+    (
+        "is calculator open",
+        ApplicationIntent.APPLICATION_STATUS,
+        ApplicationIdentifier.CALCULATOR,
+    ),
+    (
+        "is calculator running",
+        ApplicationIntent.APPLICATION_STATUS,
+        ApplicationIdentifier.CALCULATOR,
+    ),
+    (
+        "is notepad open",
+        ApplicationIntent.APPLICATION_STATUS,
+        ApplicationIdentifier.NOTEPAD,
+    ),
+    (
+        "is notepad running",
+        ApplicationIntent.APPLICATION_STATUS,
+        ApplicationIdentifier.NOTEPAD,
+    ),
 )
 
 
