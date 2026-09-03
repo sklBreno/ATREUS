@@ -195,10 +195,13 @@ def test_console_renders_only_conversational_text() -> None:
     ("content", "expected_ai_calls", "expected_executions"),
     (
         ("open calculator", 0, 1),
-        ("abre a calculadora", 1, 0),
+        ("abra a calculadora", 0, 1),
+        ("abre a calculadora", 0, 1),
+        ("abra o bloco de notas", 0, 1),
         ("pode abrir a calculadora?", 1, 0),
         ("o que é uma calculadora?", 1, 0),
         ("what is a calculator?", 1, 0),
+        ("what is notepad?", 1, 0),
         ("você consegue abrir a calculadora?", 0, 0),
         ("can you open calculator?", 0, 0),
     ),
@@ -223,19 +226,54 @@ def test_action_and_conversation_boundary(
         assert result.execution_results == ()
 
 
-def test_application_status_keeps_operational_pipeline() -> None:
+@pytest.mark.parametrize(
+    "content",
+    (
+        "is calculator open?",
+        "is notepad open?",
+        "is calculator running?",
+        "is notepad running?",
+    ),
+)
+def test_application_status_keeps_operational_pipeline(content: str) -> None:
     provider = PurposeAwareAIProvider()
     runtime, launcher, reader, _ = build_runtime(provider)
 
-    result = runtime.submit("is calculator open?")
+    result = runtime.submit(content)
 
-    assert [request.purpose for request in provider.requests] == [
-        AIRequestPurpose.REQUEST_INTERPRETATION
-    ]
+    assert provider.requests == []
     assert result.conversational_response is None
+    assert result.plan is not None
+    assert result.plan.steps[0].capability_id == "application.status"
     assert result.execution_results[0].status is CapabilityExecutionStatus.SUCCEEDED
     assert launcher.calls == []
     assert len(reader.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_launches", "expected_reads"),
+    (
+        ("abra a calculadora", 1, 0),
+        ("abre a calculadora", 1, 0),
+        ("abra o bloco de notas", 1, 0),
+        ("is calculator open?", 0, 1),
+        ("is notepad running?", 0, 1),
+    ),
+)
+def test_bounded_operational_routes_do_not_require_ai_provider(
+    content: str,
+    expected_launches: int,
+    expected_reads: int,
+) -> None:
+    runtime, launcher, reader, _ = build_runtime(enabled=False)
+
+    result = runtime.submit(content)
+
+    assert result.conversational_response is None
+    assert result.plan is not None
+    assert result.execution_results[0].status is CapabilityExecutionStatus.SUCCEEDED
+    assert len(launcher.calls) == expected_launches
+    assert len(reader.calls) == expected_reads
 
 
 @pytest.mark.parametrize(
@@ -282,6 +320,42 @@ def test_hostile_non_conversational_input_never_executes(content: str) -> None:
     assert provider.requests == []
     assert launcher.calls == []
     assert reader.calls == []
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_output"),
+    (
+        ("execute powershell", "Essa ação não é suportada pelo ATREUS."),
+        ("run powershell", "That action is not supported by ATREUS."),
+        ("open cmd", "That action is not supported by ATREUS."),
+        ("execute cmd", "Essa ação não é suportada pelo ATREUS."),
+        ("abra o powershell", "Essa ação não é suportada pelo ATREUS."),
+    ),
+)
+def test_unsupported_shell_actions_render_explicit_safe_failure(
+    content: str,
+    expected_output: str,
+) -> None:
+    provider = PurposeAwareAIProvider()
+    runtime, launcher, reader, _ = build_runtime(provider)
+    outputs: list[str] = []
+    console = InteractiveConsole(
+        runtime.submit,
+        InputSequence((content, "exit")),
+        outputs.append,
+    )
+
+    assert console.run() == 0
+    assert outputs == [expected_output]
+    assert provider.requests == []
+    assert launcher.calls == []
+    assert reader.calls == []
+
+    result = runtime.submit(content)
+    assert result.decision.outcome is DecisionOutcome.IGNORE
+    assert result.decision.reason_code == "unsafe_system_action_unsupported"
+    assert result.plan is None
+    assert result.execution_results == ()
 
 
 @pytest.mark.parametrize(

@@ -162,6 +162,10 @@ class InteractiveConsole(ForegroundInterface):
         if result.decision.outcome is DecisionOutcome.ASK_FOR_CONFIRMATION:
             return "I need clarification before I can act."
         if result.decision.outcome is DecisionOutcome.IGNORE:
+            if result.decision.reason_code == "unsafe_system_action_unsupported":
+                if result.interaction_language is InteractionLanguage.EN_US:
+                    return "That action is not supported by ATREUS."
+                return "Essa ação não é suportada pelo ATREUS."
             return "That action is not available."
         if result.decision.outcome is DecisionOutcome.SUGGEST:
             return "No action was taken."

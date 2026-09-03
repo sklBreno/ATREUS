@@ -342,10 +342,10 @@ def test_capability_questions_delegate_to_conversation_without_execution(
     assert decision.target == CONVERSATION_RESPONDER_SERVICE_ID
 
 
-def test_operational_status_question_keeps_interpreter_precedence() -> None:
+def test_natural_status_question_keeps_interpreter_precedence() -> None:
     decision = make_engine().decide(
         make_input(
-            content="is calculator open?",
+            content="could you tell me if calculator is open?",
             request_type=RequestType.QUESTION,
             candidates=(make_metadata("application.status"),),
             allow_delegation=True,
@@ -358,6 +358,79 @@ def test_operational_status_question_keeps_interpreter_precedence() -> None:
 
     assert decision.outcome is DecisionOutcome.DELEGATE
     assert decision.target == REQUEST_INTERPRETER_SERVICE_ID
+
+
+@pytest.mark.parametrize(
+    ("content", "capability_id"),
+    (
+        ("abra a calculadora", "application.open"),
+        ("abre a calculadora", "application.open"),
+        ("abra o bloco de notas", "application.open"),
+        ("is calculator open?", "application.status"),
+        ("is notepad open?", "application.status"),
+        ("is calculator running?", "application.status"),
+        ("is notepad running?", "application.status"),
+    ),
+)
+def test_bounded_application_phrases_plan_without_ai_availability(
+    content: str,
+    capability_id: str,
+) -> None:
+    request_type = (
+        RequestType.COMMAND
+        if capability_id == "application.open"
+        else RequestType.QUESTION
+    )
+    decision = make_engine().decide(
+        make_input(
+            content=content,
+            request_type=request_type,
+            candidates=(make_metadata(capability_id),),
+            permission_grants=((
+                "application.control"
+                if capability_id == "application.open"
+                else "application.read"
+            ),),
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.REQUEST_PLANNING
+    assert decision.target == capability_id
+    assert decision.action is not None
+
+
+@pytest.mark.parametrize(
+    "content",
+    (
+        "execute powershell",
+        "run powershell",
+        "open cmd",
+        "execute cmd",
+        "run command prompt",
+        "execute shell",
+        "abra o powershell",
+        "execute o powershell",
+    ),
+)
+def test_explicit_shell_actions_are_rejected_without_clarification(
+    content: str,
+) -> None:
+    decision = make_engine().decide(
+        make_input(
+            content=content,
+            request_type=RequestType.COMMAND,
+            candidates=(make_metadata("application.open"),),
+            allow_delegation=True,
+            delegation_service_ids=(
+                REQUEST_INTERPRETER_SERVICE_ID,
+                CONVERSATION_RESPONDER_SERVICE_ID,
+            ),
+        )
+    )
+
+    assert decision.outcome is DecisionOutcome.IGNORE
+    assert decision.target is None
+    assert decision.reason_code == "unsafe_system_action_unsupported"
 
 
 def test_suspicious_operational_question_is_not_redirected_to_conversation() -> None:

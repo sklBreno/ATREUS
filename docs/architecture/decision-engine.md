@@ -230,6 +230,18 @@ Questions about current ATREUS capability support are delegated for a
 non-executing answer and never treated as action requests. Suspicious composed
 command syntax does not enter conversational delegation.
 
+A narrow local grammar may produce an approved typed application action before
+AI delegation. Current deterministic forms include English open commands,
+Brazilian Portuguese calculator and notepad open imperatives, and English
+calculator and notepad status questions. After normal policy checks, these
+actions return `REQUEST_PLANNING` and do not depend on AI availability.
+
+Explicit imperative requests for PowerShell, `cmd`, command prompt, or a
+generic shell return `IGNORE` with
+`unsafe_system_action_unsupported`. This rejection precedes generic target
+clarification and conversational delegation because additional clarification
+cannot make those system actions supported.
+
 An earlier restrictive rule takes precedence over a later permissive rule.
 Conflicting rules must not be resolved by arbitrary registration order.
 

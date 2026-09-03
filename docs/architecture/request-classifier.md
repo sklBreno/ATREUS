@@ -146,6 +146,10 @@ Portuguese and English questions, greetings, identity requests, capability
 questions, and internal-secret requests. These rules identify request type
 only. They do not generate responses, select a provider, or route execution.
 
+The local classifier also recognizes `abra` and `abre` as narrow Brazilian
+Portuguese command prefixes. Target resolution remains outside the classifier;
+unsupported targets do not become capabilities because of this classification.
+
 Natural Language Actions V1 does not add intent or capability selection to the
 classifier. Phrases about opening an approved application or reading its status
 still receive only a request type and confidence here. Decision Engine owns the

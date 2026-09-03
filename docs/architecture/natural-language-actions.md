@@ -58,6 +58,7 @@ Deterministic commands retain their zero-AI path:
 
 ```text
 open calculator / open notepad
+abra|abre a calculadora / abra|abre o bloco de notas
     -> Request Classifier
     -> Core
     -> Decision Engine
@@ -65,6 +66,18 @@ open calculator / open notepad
     -> Capability Runtime
     -> application.open
 ```
+
+The local deterministic grammar also recognizes these read-only status
+questions without AI:
+
+- `is calculator open?`
+- `is calculator running?`
+- `is notepad open?`
+- `is notepad running?`
+
+These phrases resolve directly to a typed `APPLICATION_STATUS` action. Broader
+natural-language variants continue to use the bounded Request Interpreter when
+it is available.
 
 Eligible natural application-open requests use one bounded AI interpretation:
 
@@ -186,6 +199,12 @@ output, missing permissions, and suspicious or composed commands fail closed.
 The bounded AI fallback is not entered for paths, executable syntax, PIDs,
 arbitrary process requests, shell operators, multiple actions, PowerShell,
 `cmd`, or allowlist-bypass language.
+
+Direct imperative requests for PowerShell, `cmd`, command prompt, or a generic
+shell are rejected locally as unsupported system actions before clarification
+or conversation. The foreground interface renders a localized unsupported
+message. Rejection does not create a capability, plan, invocation, permission,
+or provider request.
 
 Native adapter failures become sanitized capability failures. Status does not
 retry automatically. Open does not promise idempotency and does not perform a

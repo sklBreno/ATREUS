@@ -259,7 +259,8 @@ def test_natural_status_executes_once_without_confirmation(
     assert result.execution_results[0].status is (
         CapabilityExecutionStatus.SUCCEEDED
     )
-    assert len(provider.requests) == 1
+    expected_ai_requests = 0 if request_content.startswith("is ") else 1
+    assert len(provider.requests) == expected_ai_requests
     assert len(reader.calls) == 1
     assert launcher.calls == []
 
@@ -327,7 +328,8 @@ def test_console_renders_status_deterministically_in_request_language(
 
     assert console.run() == 0
     assert outputs == [expected_output]
-    assert len(provider.requests) == 1
+    expected_ai_requests = 0 if request_content.startswith("is ") else 1
+    assert len(provider.requests) == expected_ai_requests
     assert len(reader.calls) == 1
     assert launcher.calls == []
 
@@ -362,7 +364,7 @@ def test_status_cannot_bypass_application_read_permission() -> None:
     assert result.decision.outcome is DecisionOutcome.IGNORE
     assert result.decision.reason_code == "required_permission_missing"
     assert result.execution_results == ()
-    assert len(provider.requests) == 1
+    assert provider.requests == []
     assert reader.calls == []
     assert launcher.calls == []
 

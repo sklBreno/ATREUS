@@ -80,6 +80,12 @@ Invocation, ExecutionContext, or System Layer. It cannot execute an action or
 create a permission grant. Operational commands and confirmation responses
 retain precedence over conversational delegation.
 
+Bounded Brazilian Portuguese open imperatives and English application-status
+questions are operational requests even when AI is unavailable. Explicit
+PowerShell, `cmd`, command-prompt, and shell imperatives are rejected locally as
+unsupported rather than being redirected to conversation or clarification.
+Capability questions such as `can you open calculator?` remain non-executive.
+
 ---
 
 # AI Provider Use

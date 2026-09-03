@@ -139,6 +139,21 @@ _NON_EXECUTIVE_CAPABILITY_QUESTIONS = frozenset(
         "voce consegue abrir o spotify",
     }
 )
+_UNSUPPORTED_SYSTEM_ACTION_VERBS = (
+    "execute ",
+    "run ",
+    "open ",
+    "abra ",
+    "abre ",
+)
+_UNSUPPORTED_SYSTEM_ACTION_TARGETS = frozenset(
+    {
+        "cmd",
+        "command prompt",
+        "powershell",
+        "shell",
+    }
+)
 
 
 class DeterministicDecisionEngine(DecisionEngine):
@@ -232,6 +247,15 @@ class DeterministicDecisionEngine(DecisionEngine):
                 decision_input,
                 candidates,
             )
+        if self._is_explicitly_unsupported_system_action(
+            decision_input.request.content
+        ):
+            return Decision(
+                request_id,
+                DecisionOutcome.IGNORE,
+                None,
+                "unsafe_system_action_unsupported",
+            )
         deterministic_definition = deterministic_application_action_definition(
             decision_input.request.content
         )
@@ -245,6 +269,9 @@ class DeterministicDecisionEngine(DecisionEngine):
                 None,
                 "application_action_unsupported",
             )
+        deterministic_action = deterministic_application_action(
+            decision_input.request.content
+        )
         explicitly_targeted = self._explicitly_targeted_capabilities(
             decision_input.request.content,
             candidates,
@@ -342,6 +369,20 @@ class DeterministicDecisionEngine(DecisionEngine):
                 DecisionOutcome.SUGGEST,
                 self._single_target(permitted),
                 "performance_profile_limits_non_command_work",
+            )
+
+        if deterministic_action is not None:
+            reason_code = (
+                "command_requires_explicit_plan"
+                if request_type is RequestType.COMMAND
+                else "read_only_action_requires_explicit_plan"
+            )
+            return Decision(
+                request_id,
+                DecisionOutcome.REQUEST_PLANNING,
+                deterministic_action.capability_id,
+                reason_code,
+                deterministic_action,
             )
 
         if request_type is RequestType.COMMAND:
@@ -591,6 +632,16 @@ class DeterministicDecisionEngine(DecisionEngine):
         return not any(marker in content for marker in _SHELL_OPERATOR_MARKERS)
 
     @staticmethod
+    def _is_explicitly_unsupported_system_action(request_content: str) -> bool:
+        normalized = DeterministicDecisionEngine._normalize_request(request_content)
+        for verb in _UNSUPPORTED_SYSTEM_ACTION_VERBS:
+            if not normalized.startswith(verb):
+                continue
+            target = normalized.removeprefix(verb).removeprefix("o ")
+            return target in _UNSUPPORTED_SYSTEM_ACTION_TARGETS
+        return False
+
+    @staticmethod
     def _decide_command(
         request_id: UUID,
         request_content: str,
@@ -608,17 +659,6 @@ class DeterministicDecisionEngine(DecisionEngine):
                 DecisionOutcome.ASK_FOR_CONFIRMATION,
                 None,
                 "multiple_capability_targets",
-            )
-        if (
-            (action := deterministic_application_action(request_content)) is not None
-            and permitted[0].identifier == action.capability_id
-        ):
-            return Decision(
-                request_id,
-                DecisionOutcome.REQUEST_PLANNING,
-                action.capability_id,
-                "command_requires_explicit_plan",
-                action,
             )
         return Decision(
             request_id,
